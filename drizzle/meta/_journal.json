@@ -8,6 +8,13 @@
       "when": 1792666743124,
       "tag": "0000_rich_prima",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1792668120487,
+      "tag": "0001_lucky_archangel",
+      "breakpoints": true
     }
   ]
 }

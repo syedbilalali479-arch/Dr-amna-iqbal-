@@ -32,7 +32,7 @@ Date: 22 October 2026 (Asia/Karachi)
 - Sandbox inbox with AI/human assignment and structured conversation state
 - Deterministic Roman Urdu/English relative-date and time resolution in Asia/Karachi
 - Patient linking/creation, availability conflict check and database-first appointment confirmation
-- Live Meta webhook and outbound delivery are credential-gated; environment variable names are documented in `.env.example`.
+- Live WhatsApp device connection and outbound delivery are credential-gated; environment variable names are documented in `.env.example`.
 
 ### Phase 6 — production controls
 
@@ -52,7 +52,7 @@ Date: 22 October 2026 (Asia/Karachi)
 
 ## Credential-dependent activation
 
-No secret was hardcoded. Live WhatsApp webhook verification, message delivery, approved templates and real campaign sending require the clinic's Meta Business credentials. The shipped sandbox exercises the routing, date resolution, conflict validation, persistence and handoff behavior without impersonating a live integration.
+No secret was hardcoded. Live WhatsApp connection and delivery require the clinic's private API credentials. The provider-neutral interface handles connection status, QR device linking, booking routing, date resolution, persistence and staff handoff.
 
 ## Operational note
 
