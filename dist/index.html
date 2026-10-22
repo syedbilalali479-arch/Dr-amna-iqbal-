@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Skinuvia clinic operations dashboard by Dr. Amna Iqbal" />
+  <title>Skinuvia — Clinic Operations</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark"><span>S</span></div>
+        <div><strong>Skinuvia</strong><small>by Dr. Amna Iqbal</small></div>
+      </div>
+      <nav id="nav"></nav>
+      <div class="clinic-status">
+        <div class="status-line"><span class="pulse"></span> Clinic is open</div>
+        <small>Next closing · 8:00 PM</small>
+      </div>
+      <button class="profile-card" id="profileBtn">
+        <span class="avatar">AI</span>
+        <span><strong>Dr. Amna Iqbal</strong><small>Clinic Admin</small></span>
+        <span>⋯</span>
+      </button>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="menuBtn" aria-label="Toggle menu">☰</button>
+        <div class="search-wrap"><span>⌕</span><input id="globalSearch" placeholder="Search patients, appointments, invoices…" /><kbd>⌘ K</kbd></div>
+        <div class="top-actions">
+          <div class="pak-time"><span id="pkDate"></span><strong id="pkTime"></strong></div>
+          <button class="icon-btn" id="themeBtn" aria-label="Toggle theme">◐</button>
+          <button class="icon-btn notification" aria-label="Notifications">♢<i></i></button>
+          <button class="primary-btn" data-action="appointment">＋ New appointment</button>
+        </div>
+      </header>
+
+      <section class="content" id="content">
+        <div class="page-heading">
+          <div><p class="eyebrow">THURSDAY OPERATIONS</p><h1>Good afternoon, Dr. Amna</h1><p>Here’s what’s happening at Skinuvia today.</p></div>
+          <div class="heading-actions"><button class="secondary-btn" id="exportBtn">↗ Export report</button><button class="primary-btn" data-action="walkin">＋ Add walk-in</button></div>
+        </div>
+
+        <div class="stats-grid" id="statsGrid"></div>
+
+        <div class="main-grid">
+          <section class="panel schedule-panel">
+            <div class="panel-head"><div><p class="eyebrow">LIVE SCHEDULE</p><h2>Today’s appointments</h2></div><div class="segmented"><button class="active">Timeline</button><button>Queue</button></div></div>
+            <div class="timeline" id="timeline"></div>
+          </section>
+
+          <aside class="right-column">
+            <section class="panel queue-card">
+              <div class="panel-head"><div><p class="eyebrow">WAITING ROOM</p><h2>Patient queue</h2></div><span class="live-badge"><i></i> Live</span></div>
+              <div id="queueList"></div>
+              <button class="call-next" id="callNext">Call next patient <span>→</span></button>
+            </section>
+            <section class="panel attention-card">
+              <div class="panel-head"><div><p class="eyebrow">NEEDS ATTENTION</p><h2>Quick checks</h2></div><button class="text-btn">View all</button></div>
+              <div class="attention-list">
+                <button data-toast="5 follow-ups opened"><span class="attention-icon peach">↻</span><span><strong>5 overdue follow-ups</strong><small>2 are high priority</small></span><b>›</b></button>
+                <button data-toast="Inventory alert opened"><span class="attention-icon yellow">□</span><span><strong>3 medicines low in stock</strong><small>Reorder recommended</small></span><b>›</b></button>
+                <button data-toast="Handoff inbox opened"><span class="attention-icon lilac">◌</span><span><strong>2 WhatsApp handoffs</strong><small>Waiting for staff</small></span><b>›</b></button>
+              </div>
+            </section>
+          </aside>
+        </div>
+
+        <section class="panel revenue-panel">
+          <div class="panel-head"><div><p class="eyebrow">PERFORMANCE</p><h2>Revenue overview</h2></div><select id="rangeSelect"><option>This week</option><option>This month</option></select></div>
+          <div class="revenue-layout"><div class="revenue-summary"><small>Collected this week</small><h3>PKR 284,500</h3><p><span>↑ 12.4%</span> vs last week</p><div class="legend"><i></i> Collections <i></i> Target</div></div><div class="chart" id="chart"></div></div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="modalBackdrop" hidden>
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-head"><div><p class="eyebrow">CLINIC OPERATIONS</p><h2 id="modalTitle">New appointment</h2></div><button class="icon-btn" id="closeModal">×</button></div>
+      <form id="clinicForm" novalidate>
+        <div class="form-grid">
+          <label><span>Patient name *</span><input name="patient" required placeholder="e.g. Sara Ahmed" /></label>
+          <label><span>Mobile number *</span><input name="phone" required inputmode="tel" placeholder="03XX XXXXXXX" pattern="[0-9 +()-]{10,16}" /></label>
+          <label><span>Date *</span><input name="date" type="date" required /></label>
+          <label><span>Time *</span><input name="time" type="time" required /></label>
+          <label><span>Service *</span><select name="service" required><option value="">Select treatment</option><option>Skin Consultation</option><option>HydraFacial</option><option>Laser Hair Reduction</option><option>Acne Treatment</option><option>PRP Therapy</option></select></label>
+          <label><span>Doctor *</span><select name="doctor" required><option>Dr. Amna Iqbal</option><option>Dr. Zoya Khan</option></select></label>
+          <label class="wide"><span>Notes</span><textarea name="notes" placeholder="Optional visit notes"></textarea></label>
+        </div>
+        <div class="form-actions"><button type="button" class="secondary-btn" id="cancelModal">Cancel</button><button type="submit" class="primary-btn">Save appointment</button></div>
+      </form>
+    </section>
+  </div>
+  <div class="toast" id="toast" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>
