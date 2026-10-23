@@ -15,6 +15,13 @@
       "when": 1792668120487,
       "tag": "0001_lucky_archangel",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792778952241,
+      "tag": "0002_equal_ben_parker",
+      "breakpoints": true
     }
   ]
 }
