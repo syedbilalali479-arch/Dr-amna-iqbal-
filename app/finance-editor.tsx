@@ -9,7 +9,7 @@ type Data=Record<string,Row[]>;
 const titles:Record<string,string>={vendors:'Vendor',purchases:'Medicine Purchase',sales:'Pharmacy Sale',vendor_payments:'Vendor Payment',invoices:'Clinical Invoice'};
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Karachi',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const money=(n:unknown)=>`PKR ${Number(n||0).toLocaleString('en-PK',{maximumFractionDigits:2})}`;
-const patientLabel=(p:Row)=>`${p.name}${p.phone?' · '+p.phone:' · '+String(p.id).slice(-6)}`;
+const patientLabel=(p:Row)=>`${p.name}${p.phone?' · '+p.phone:' · '+String(p.number||'')}`;
 const batchLabel=(m:Row)=>`${m.name} · ${m.batch} · Exp ${m.expiry} · Stock ${m.quantity}`;
 export function FinanceEditor({kind,initial,data,close,saved,remove}:{kind:string;initial:Row;data:Data;close:()=>void;remove?:()=>void;saved:()=>Promise<void>}) {
  const [record,setRecord]=useState<Row>({date:today(),opening_date:today(),balance_type:'Payable',opening_balance:0,method:'Cash',discount:0,paid:0,items:[],...initial,state:initial.state==='Voided'?'Voided':'Finalized'});

@@ -1,3 +1,4 @@
+import {decorateRecords,describeRecord} from '../../../lib/record-numbers';
 import {env} from '@/lib/runtime-env';
 import {getChatGPTUser} from '../../chatgpt-auth';
 import {commerceKinds, normalizeDocument, stockDelta, type CommerceRecord} from '../../../lib/commerce';
@@ -11,7 +12,7 @@ export async function GET() {
   const docs=await env.DB!.prepare('SELECT * FROM commerce_documents WHERE clinic_id=? ORDER BY created_at DESC').bind(clinic).all<{id:string;kind:string;body:string;revision:number;created_at:string;updated_at:string}>();
   for(const row of docs.results)result[row.kind]?.push({...JSON.parse(row.body),id:row.id,revision:row.revision,created_at:row.created_at,updated_at:row.updated_at});
   result.stock_movements=(await env.DB!.prepare('SELECT * FROM stock_movements WHERE clinic_id=? ORDER BY created_at DESC LIMIT 500').bind(clinic).all()).results;
-  return Response.json(result);
+  return Response.json(await decorateRecords(env.DB!,clinic,result));
  }catch(e){return Response.json({error:e instanceof Error?e.message:'Unable to load pharmacy records'},{status:500});}
 }
 export async function POST(request:Request) {
@@ -71,6 +72,6 @@ export async function POST(request:Request) {
   if(kind==='invoices'&&!after&&before?.appointment_id)statements.push(db.prepare("UPDATE appointments SET payment_status='Unpaid',updated_at=CURRENT_TIMESTAMP WHERE clinic_id=? AND id=?").bind(clinic,before.appointment_id));
   statements.push(db.prepare('INSERT INTO audit_logs(id,clinic_id,actor_id,action,entity_type,entity_id,detail) VALUES(?,?,?,?,?,?,?)').bind(id(),clinic,user.userId,operation.toUpperCase(),kind,recordId,JSON.stringify({before,after})));
   await db.batch(statements);
-  return Response.json({ok:true,id:recordId,record:after?{...after,revision:(stored?.revision||0)+1}:null});
+  return Response.json({ok:true,id:recordId,record:after?await describeRecord(db,clinic,kind,{...after,id:recordId,revision:(stored?.revision||0)+1}):null});
  }catch(e){let message=e instanceof Error?e.message:'Unable to save record';if(message.includes('commerce_appointment_invoice')||message.includes('UNIQUE constraint failed: index'))message='An invoice already exists for this appointment. Open it from Clinical Invoices.';if(message.includes('CHECK constraint'))message='The record changed or stock is insufficient. Refresh and try again.';return Response.json({error:message},{status:400});}
 }

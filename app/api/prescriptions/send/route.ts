@@ -1,3 +1,4 @@
+import {describeRecord} from '../../../../lib/record-numbers';
 import {env} from '@/lib/runtime-env';
 import {getChatGPTUser} from '../../../chatgpt-auth';
 import {normalizePhone} from '../../../../lib/prescription-delivery';
@@ -16,7 +17,7 @@ export async function POST(request:Request){
   try{
    const headers={Authorization:`Bearer ${env.WHATSAPP_API_TOKEN}`};
    const uploaded=await fetch('https://www.wasenderapi.com/api/upload',{method:'POST',headers:{...headers,'Content-Type':'application/pdf'},body:bytes});const upload=await uploaded.json() as {success?:boolean;publicUrl?:string;message?:string};if(!uploaded.ok||!upload.success||!upload.publicUrl)throw new Error(upload.message||'PDF upload failed');
-   const response=await fetch('https://www.wasenderapi.com/api/send-message',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({to:phone,text:`Skinuvia prescription for ${rx.patient_name}`,documentUrl:upload.publicUrl,fileName:`Skinuvia-${rxId}.pdf`})});const result=await response.json() as {success?:boolean;message?:string;data?:{msgId?:unknown;status?:string}};if(!response.ok||!result.success)throw new Error(result.message||'WhatsApp rejected the message');
+   const response=await fetch('https://www.wasenderapi.com/api/send-message',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({to:phone,text:`Skinuvia prescription for ${rx.patient_name}`,documentUrl:upload.publicUrl,fileName:`Skinuvia-${(await describeRecord(env.DB!,'skinuvia','prescriptions',{id:rxId})).number}.pdf`})});const result=await response.json() as {success?:boolean;message?:string;data?:{msgId?:unknown;status?:string}};if(!response.ok||!result.success)throw new Error(result.message||'WhatsApp rejected the message');
    await env.DB!.prepare('UPDATE audit_logs SET action=?,detail=? WHERE id=?').bind('SEND_ACCEPTED',JSON.stringify({phone,version:rx.version,messageId:result.data?.msgId,status:result.data?.status}),requestId).run();return Response.json({ok:true,message:'WhatsApp accepted the prescription for sending. Check the conversation for delivery.'});
   }catch(e){await env.DB!.prepare('UPDATE audit_logs SET action=? WHERE id=?').bind('SEND_UNCONFIRMED',requestId).run();throw e;}
  }catch(e){return Response.json({error:e instanceof Error?e.message:'Unable to send prescription'},{status:400});}
