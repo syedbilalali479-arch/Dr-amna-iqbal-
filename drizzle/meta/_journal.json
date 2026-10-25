@@ -22,6 +22,20 @@
       "when": 1792778952241,
       "tag": "0002_equal_ben_parker",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1792946962623,
+      "tag": "0003_pharmacy_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792949394600,
+      "tag": "0004_prescription_letterhead",
+      "breakpoints": true
     }
   ]
 }

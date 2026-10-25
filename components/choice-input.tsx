@@ -1,0 +1,5 @@
+"use client";
+import {useId} from 'react';
+export function ChoiceInput({options,value,defaultValue,onChange,name,required=false,disabled=false,strict=false,placeholder='Select or type your own…',label}:{options:string[];value?:string;defaultValue?:string;onChange?:(value:string)=>void;name?:string;required?:boolean;disabled?:boolean;strict?:boolean;placeholder?:string;label?:string}) {
+ const id=useId();return <><input name={name} aria-label={label} list={id} value={value} defaultValue={defaultValue} onChange={e=>{e.currentTarget.setCustomValidity(strict&&!options.includes(e.target.value)?'Choose or type one of the listed options.':'');onChange?.(e.target.value)}} onBlur={e=>e.currentTarget.setCustomValidity(strict&&!options.includes(e.target.value)?'Choose or type one of the listed options.':'')} required={required} disabled={disabled} placeholder={placeholder} autoComplete="off" data-choice-input="true"/><datalist id={id}>{options.map(option=><option key={option} value={option}/>)}</datalist></>;
+}

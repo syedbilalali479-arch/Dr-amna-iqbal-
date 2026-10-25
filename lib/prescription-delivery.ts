@@ -1,0 +1,1 @@
+export function normalizePhone(value:string){let n=value.replace(/[\s()-]/g,'');if(n.startsWith('00'))n='+'+n.slice(2);if(/^03\d{9}$/.test(n))n='+92'+n.slice(1);if(/^92\d{10}$/.test(n))n='+'+n;if(!/^\+[1-9]\d{7,14}$/.test(n))throw new Error('Enter a valid phone number, for example 03001234567 or +923001234567');return n;}
