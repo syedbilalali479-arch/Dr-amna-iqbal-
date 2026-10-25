@@ -2,7 +2,7 @@
 
 The local clinic console now separates clinical invoices from medicine sales.
 
-- **Appointments:** Direct row buttons support editing, completion, cancellation, no-show, linked follow-up appointments, invoice creation/viewing and deletion. A follow-up also appears in Follow-ups, and its appointment date/status updates that reminder. Appointments with invoices retain their financial history and can be cancelled rather than deleted.
+- **Appointments:** Direct row buttons support editing, completion, cancellation, no-show, linked follow-up appointments, invoice creation/viewing and deletion. A follow-up also appears in Follow-ups, and its appointment date/status updates that reminder. Deleting an appointment cancels its linked invoice automatically while retaining the invoice and payment history.
 - **Clinical Invoices:** Patient-linked, itemized consultation/treatment/procedure invoices. One invoice per appointment is enforced by the database. Finalizing or voiding a linked invoice updates the appointment's payment status independently of its attendance status. Existing invoices remain available.
 - **Medicine Inventory:** Create a medicine batch with its strength, expiry, selling price and reorder threshold. Start new purchase batches at zero quantity. Existing opening stock can be recorded here. Quantity corrections require a reason and produce a stock movement. Low-stock, 90-day near-expiry and expired-batch alerts appear above the inventory; movements appear below it.
 - **Vendors:** Contact details, dated opening payable/advance credit, account balance and account ledger. Opening balance dates cannot move past existing transactions. Vendors with history cannot be deleted.
@@ -10,7 +10,9 @@ The local clinic console now separates clinical invoices from medicine sales.
 - **Pharmacy Sales:** Choose a patient and medicine batches, enter quantities, selling prices, discount and payment. Finalizing deducts stock. Expired stock and overselling are rejected.
 - **Vendor Payments:** Record and edit additional supplier payments. These reduce vendor balances. A negative vendor balance represents advance credit.
 
-Documents have Draft, Finalized and Voided states. Drafts have no stock/account impact. Edits to finalized purchases/sales post only the quantity difference. Voiding reverses the impact; a purchase cannot be reversed if doing so would make stock negative. Finalized documents must be voided before deletion. Stock changes, document writes and their before/after audit events commit together in a D1 batch. Revision checks reject stale finance edits.
+Document lifecycle values are internal. Forms no longer ask for Document status: saving posts the invoice, purchase or sale automatically. Cancel record reverses its stock/account impact while keeping history. Deleting a finance record also reverses its effects atomically and keeps an audit snapshot; a purchase cannot be reversed if that would make stock negative. Edits post only the quantity difference. Revision checks reject stale finance edits.
+
+Deleting an appointment automatically cancels its linked invoice in the same transaction. The cancelled invoice remains readable/printable with its original payment history and zero outstanding balance, and is excluded from active collections. Its appointment snapshot is retained for audit; it cannot be reactivated after the appointment has been removed. In-app delete forms replace browser confirmation popups and are available both on rows and in record editors.
 
 Invoices and sales receipts offer **Print / PDF**. The browser print dialog supports paper printing and Save as PDF. Printed documents include clinic identity, patient/vendor, document number/date, itemized charges, discount, paid amount and balance. Draft and voided documents are marked. Patient files include clinical invoices and pharmacy purchase history; collection reports exclude draft and voided documents.
 

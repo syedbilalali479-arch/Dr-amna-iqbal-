@@ -18,7 +18,7 @@ export async function POST(request:Request) {
  const user=await getChatGPTUser();if(!user)return Response.json({error:'Authentication required'},{status:401});
  try {
   const {resource:kind,operation,record:input}=await request.json() as {resource:string;operation:string;record:CommerceRecord};
-  if(!commerceKinds.includes(kind as typeof commerceKinds[number])||!['create','update','delete'].includes(operation))throw new Error('Unsupported operation');
+  if(!commerceKinds.includes(kind as typeof commerceKinds[number])||!['create','update','delete','cancel'].includes(operation))throw new Error('Unsupported operation');
   const db=env.DB!; const recordId=String(input.id||id());
   const stored=await db.prepare('SELECT body,revision FROM commerce_documents WHERE clinic_id=? AND id=? AND kind=?').bind(clinic,recordId,kind).first<{body:string;revision:number}>();
   if(operation!=='create'&&!stored)return Response.json({error:'Record no longer exists. Refresh the page.'},{status:404});
@@ -29,8 +29,9 @@ export async function POST(request:Request) {
    const linked=await db.prepare("SELECT id FROM commerce_documents WHERE clinic_id=? AND kind IN ('purchases','vendor_payments') AND json_extract(body,'$.vendor_id')=? LIMIT 1").bind(clinic,recordId).first();
    if(linked)throw new Error('This vendor has purchases or payments. Keep its history and edit its details instead.');
   }
-  if(operation==='delete'&&before?.state==='Finalized')throw new Error('Void the finalized document before deleting it to preserve its history.');
-  const after=operation==='delete'?null:normalizeDocument(kind,{...input,id:recordId});
+  if(before?.appointment_deleted&&operation!=='delete'&&operation!=='cancel')throw new Error('This invoice was cancelled when its appointment was deleted. Its financial history is read-only.');
+  if(operation==='cancel'&&!['invoices','sales','purchases'].includes(kind))throw new Error('This record cannot be cancelled');
+  const after=operation==='delete'?null:normalizeDocument(kind,operation==='cancel'?{...before,...input,id:recordId,state:'Voided'}:{...input,id:recordId,state:input.state||'Finalized'});
   const newEntities:D1PreparedStatement[]=[];
   if(after&&!['vendors','purchases','vendor_payments'].includes(kind)){const resolved=await resolvePatient(db,clinic,after);after.patient_id=resolved.patient.id;after.patient_name=resolved.patient.name;after.phone=resolved.patient.phone;newEntities.push(...resolved.statements);if(resolved.statements.length)newEntities.push(db.prepare('INSERT INTO audit_logs(id,clinic_id,actor_id,action,entity_type,entity_id,detail) VALUES(?,?,?,?,?,?,?)').bind(id(),clinic,user.userId,'AUTO_CREATE','patients',resolved.patient.id,JSON.stringify({after:resolved.patient})));}
   if(after&&['purchases','vendor_payments'].includes(kind)&&!after.vendor_id){const name=String(after.vendor_name||'').trim();if(!name)throw new Error('Enter a vendor name');after.vendor_name=name;const matches=(await db.prepare("SELECT id,body FROM commerce_documents WHERE clinic_id=? AND kind='vendors' AND lower(json_extract(body,'$.name'))=lower(?)").bind(clinic,name).all<{id:string;body:string}>()).results;if(matches.length>1)throw new Error('Select the intended vendor from the suggestions');if(matches[0])after.vendor_id=matches[0].id;else{after.vendor_id=id();const vendor={id:after.vendor_id,name,phone:'',opening_date:after.date,opening_balance:0,balance_type:'Payable'};newEntities.push(db.prepare("INSERT INTO commerce_documents(id,clinic_id,kind,body) VALUES(?,?,'vendors',?)").bind(after.vendor_id,clinic,JSON.stringify(vendor)));}}
@@ -39,7 +40,7 @@ export async function POST(request:Request) {
    if(vendor){after.vendor_name=JSON.parse(vendor.body).name;if(String(after.date)<String(JSON.parse(vendor.body).opening_date))throw new Error('The date must be on or after the vendor opening balance date');}
   }
   if(kind==='vendors'&&after&&stored){const earliest=await db.prepare("SELECT MIN(json_extract(body,'$.date')) AS date FROM commerce_documents WHERE clinic_id=? AND kind IN ('purchases','vendor_payments') AND json_extract(body,'$.vendor_id')=?").bind(clinic,recordId).first<{date:string|null}>();if(earliest?.date&&String(after.opening_date)>earliest.date)throw new Error('Opening balance date cannot be after existing purchases or payments');}
-  if(after?.appointment_id) {
+  if(after?.appointment_id&&after.state!=='Voided') {
    const appointment=await db.prepare('SELECT patient_id FROM appointments WHERE clinic_id=? AND id=?').bind(clinic,String(after.appointment_id)).first<{patient_id:string}>();
    if(!appointment||appointment.patient_id!==after.patient_id)throw new Error('Invoice patient must match the appointment');
   }
@@ -54,6 +55,7 @@ export async function POST(request:Request) {
    line.description=`${med.name}${med.generic_name?` (${med.generic_name})`:''} · Batch ${med.batch} · Exp ${med.expiry}`;
   }
   const statements:D1PreparedStatement[]=[...newEntities]; const guardId=id();
+  if(after?.appointment_id&&after.state!=='Voided'){statements.push(db.prepare('INSERT INTO commerce_guards(id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM appointments WHERE clinic_id=? AND id=? AND patient_id=?) THEN 1 ELSE 0 END').bind(guardId,clinic,after.appointment_id,after.patient_id),db.prepare('DELETE FROM commerce_guards WHERE id=?').bind(guardId));}
   if(stored) {
    statements.push(operation==='delete'?db.prepare('DELETE FROM commerce_documents WHERE clinic_id=? AND id=? AND revision=?').bind(clinic,recordId,stored.revision):db.prepare('UPDATE commerce_documents SET body=?,revision=revision+1,updated_at=CURRENT_TIMESTAMP WHERE clinic_id=? AND id=? AND revision=?').bind(JSON.stringify(after),clinic,recordId,stored.revision));
    statements.push(db.prepare('INSERT INTO commerce_guards(id,valid) VALUES(?,changes())').bind(guardId));
@@ -66,6 +68,7 @@ export async function POST(request:Request) {
    statements.push(db.prepare('INSERT INTO stock_movements(id,clinic_id,medicine_id,document_id,quantity,reason) VALUES(?,?,?,?,?,?)').bind(id(),clinic,medicineId,recordId,delta,`${kind}: ${operation}${after?` (${after.state})`:''}`));
   }
   if(kind==='invoices'&&after?.appointment_id){statements.push(db.prepare('UPDATE appointments SET payment_status=?,updated_at=CURRENT_TIMESTAMP WHERE clinic_id=? AND id=?').bind(after.state==='Finalized'?after.status:'Unpaid',clinic,String(after.appointment_id)));}
+  if(kind==='invoices'&&!after&&before?.appointment_id)statements.push(db.prepare("UPDATE appointments SET payment_status='Unpaid',updated_at=CURRENT_TIMESTAMP WHERE clinic_id=? AND id=?").bind(clinic,before.appointment_id));
   statements.push(db.prepare('INSERT INTO audit_logs(id,clinic_id,actor_id,action,entity_type,entity_id,detail) VALUES(?,?,?,?,?,?,?)').bind(id(),clinic,user.userId,operation.toUpperCase(),kind,recordId,JSON.stringify({before,after})));
   await db.batch(statements);
   return Response.json({ok:true,id:recordId,record:after?{...after,revision:(stored?.revision||0)+1}:null});

@@ -33,6 +33,7 @@ export function normalizeDocument(kind:string, input:CommerceRecord):CommerceRec
   r.net=Math.round((Number(r.total)-Number(r.discount))*100)/100;
   r.paid=amount(r.paid,'Amount paid'); if(Number(r.paid)>Number(r.net))throw new Error('Amount paid cannot exceed the total');
   r.balance=Math.round((Number(r.net)-Number(r.paid))*100)/100;
+  if(r.state==='Voided')r.balance=0;
   r.status=r.state==='Voided'?'Voided':Number(r.balance)===0?'Paid':Number(r.paid)>0?'Partially Paid':'Unpaid';
  }
  if(kind!=='vendors'&&!/^\d{4}-\d{2}-\d{2}$/.test(String(r.date||'')))throw new Error('A document date is required');
