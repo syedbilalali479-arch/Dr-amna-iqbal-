@@ -1,4 +1,5 @@
-import { headers } from "next/headers";
+import { headers, cookies } from "next/headers";
+import {validSession,sessionCookie} from "../lib/railway-session";
 import { redirect } from "next/navigation";
 
 export type ChatGPTUser = {
@@ -19,6 +20,7 @@ const SIGN_OUT_PATH = "/signout-with-chatgpt";
 const CALLBACK_PATH = "/callback";
 
 export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
+  if(process.env.DEPLOY_TARGET==='railway'){const jar=await cookies();if(!validSession(jar.get(sessionCookie)?.value||'',process.env.SESSION_SECRET||''))return null;return {userId:'clinic-admin',email:process.env.ADMIN_EMAIL||'admin@skinuvia.local',displayName:'Dr. Aamina Iqbal',fullName:'Dr. Aamina Iqbal'};}
   const requestHeaders = await headers();
   const userId = requestHeaders.get(USER_ID_HEADER);
   const email = requestHeaders.get(USER_EMAIL_HEADER);
@@ -50,11 +52,13 @@ export async function requireChatGPTUser(
 
 export function chatGPTSignInPath(returnTo: string): string {
   const safeReturnTo = safeRelativeReturnPath(returnTo);
+  if(process.env.DEPLOY_TARGET==='railway')return '/login';
   return `${SIGN_IN_PATH}?return_to=${encodeURIComponent(safeReturnTo)}`;
 }
 
 export function chatGPTSignOutPath(returnTo = "/"): string {
   const safeReturnTo = safeRelativeReturnPath(returnTo);
+  if(process.env.DEPLOY_TARGET==='railway')return '/api/session';
   return `${SIGN_OUT_PATH}?return_to=${encodeURIComponent(safeReturnTo)}`;
 }
 

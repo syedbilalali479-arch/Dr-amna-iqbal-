@@ -43,3 +43,7 @@ yarn-error.log*
 
 # OS metadata
 .DS_Store
+
+# Railway build output and local smoke-test databases
+/.next-railway/
+/.railway-data/

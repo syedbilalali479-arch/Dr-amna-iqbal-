@@ -1,4 +1,4 @@
-import {env} from 'cloudflare:workers';
+import {env} from '@/lib/runtime-env';
 import {getChatGPTUser} from '../../../chatgpt-auth';
 import {normalizePhone} from '../../../../lib/prescription-delivery';
 export async function POST(request:Request){

@@ -1,4 +1,4 @@
-import {env} from 'cloudflare:workers';
+import {env} from '@/lib/runtime-env';
 import {getChatGPTUser} from '../../chatgpt-auth';
 import {commerceKinds, normalizeDocument, stockDelta, type CommerceRecord} from '../../../lib/commerce';
 import {resolvePatient} from '../../../lib/patient-record';

@@ -1,4 +1,4 @@
-import {env} from "cloudflare:workers";
+import {env} from "@/lib/runtime-env";
 import QRCode from "qrcode";
 import {getChatGPTUser} from "../../chatgpt-auth";
 const base="https://www.wasenderapi.com/api";

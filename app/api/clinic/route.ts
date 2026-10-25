@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/lib/runtime-env";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { normalizeMessage } from "../../../lib/ai/ai-brain";
 const CLINIC="skinuvia";
