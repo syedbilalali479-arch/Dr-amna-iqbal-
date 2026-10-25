@@ -2,7 +2,7 @@
 
 The local clinic console now separates clinical invoices from medicine sales.
 
-- **Appointments:** Actions supports editing, completion, cancellation, no-show, linked follow-up appointments, invoice creation/viewing and deletion. A follow-up also appears in Follow-ups, and its appointment date/status updates that reminder. Appointments with invoices retain their financial history and can be cancelled rather than deleted.
+- **Appointments:** Direct row buttons support editing, completion, cancellation, no-show, linked follow-up appointments, invoice creation/viewing and deletion. A follow-up also appears in Follow-ups, and its appointment date/status updates that reminder. Appointments with invoices retain their financial history and can be cancelled rather than deleted.
 - **Clinical Invoices:** Patient-linked, itemized consultation/treatment/procedure invoices. One invoice per appointment is enforced by the database. Finalizing or voiding a linked invoice updates the appointment's payment status independently of its attendance status. Existing invoices remain available.
 - **Medicine Inventory:** Create a medicine batch with its strength, expiry, selling price and reorder threshold. Start new purchase batches at zero quantity. Existing opening stock can be recorded here. Quantity corrections require a reason and produce a stock movement. Low-stock, 90-day near-expiry and expired-batch alerts appear above the inventory; movements appear below it.
 - **Vendors:** Contact details, dated opening payable/advance credit, account balance and account ledger. Opening balance dates cannot move past existing transactions. Vendors with history cannot be deleted.
@@ -21,6 +21,8 @@ Migration `drizzle/0003_pharmacy_operations.sql` adds finance documents, stock m
 The existing local authentication and hosting configuration are preserved. This update does not publish the local site.
 
 ## Reception forms and letterhead prescriptions
+
+**Walk-in & bill** opens a dedicated booking form with optional notes and no manual appointment/payment status fields. Enter the service fee, discount, payment and method, then choose **Book & print bill** to atomically save the patient, appointment and finalized clinical invoice. Walk-ins start Waiting; regular bookings start Confirmed. Payment status comes from the bill. A stable request identifier protects retries from creating duplicate bookings/invoices. Existing appointments keep their status during edits, and existing bills are managed through Edit invoice. All choice controls include a visible dropdown, keyboard selection and custom typing where supported.
 
 Invoice and sales forms include **Save & Print / PDF** before the first save. The button validates, saves and prints the saved document. Patient names can be typed, and new patients are added in the same database batch as their document. Typed names reuse an existing unambiguous patient; ambiguous names require selecting the phone-number suggestion. New vendor names and new purchase batches can also be entered directly. Medicine sales still require an existing batch so stock remains traceable. Choice fields support keyboard entry and suggestions; operational status fields accept their defined values to preserve stock and payment behavior.
 
