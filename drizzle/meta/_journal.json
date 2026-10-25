@@ -43,6 +43,13 @@
       "when": 1792957657449,
       "tag": "0005_simple_numbers_and_rx_items",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1792965071339,
+      "tag": "0006_clinic_service_rates",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,26 @@
+/** Clinic-approved rate cards supplied by the clinic, October 2026. */
+export const serviceCatalog=[
+ {id:'consultation',name:'Skin Consultation',price:2000,aliases:['Consultation','Dermatology Consultation'],description:'Dermatology consultation.'},
+ {id:'hydra-simple',name:'Simple Hydra Facial',price:8000,aliases:['HydraFacial','Hydra Facial','Simple Hydrafacial'],description:'Deep cleansing and hydration.'},
+ {id:'hydra-advance',name:'Advance Hydra Facial',price:10000,aliases:['Advanced Hydra Facial','Advance Hydrafacial'],description:'Basic Hydra Facial plus photo facial.'},
+ {id:'hydra-premium',name:'Premium Hydra Facial',price:12000,aliases:['Premium Hydrafacial'],description:'Advance Hydra Facial plus oxygen facial.'},
+ {id:'laser-face',name:'Laser Hair Removal — Face + Neck',price:4000,price_max:6000,pricing_type:'Range',aliases:['Laser Hair Removal (Face)','Laser Hair Reduction','Laser Hair Removal - Face + Neck'],description:'Face and neck laser hair removal; final charge within the published range.'},
+ {id:'laser-underarms',name:'Laser Hair Removal — Underarms',price:6000},
+ {id:'laser-bikini',name:'Laser Hair Removal — Bikini Area',price:8000},
+ {id:'laser-arms',name:'Laser Hair Removal — Full Arms',price:10000},
+ {id:'laser-half-legs',name:'Laser Hair Removal — Half Legs',price:8000},
+ {id:'laser-legs',name:'Laser Hair Removal — Full Legs',price:20000},
+ {id:'laser-body',name:'Laser Hair Removal — Full Body',price:35000,description:'Includes arms, legs, underarms and bikini area.'},
+ {id:'photofacial',name:'Photofacial',price:4000,aliases:['Photo Facial']},
+ {id:'carbon',name:'Carbon Laser Facial',price:5000},
+ {id:'prp',name:'PRP Therapy',price:10000},
+ {id:'prp-micro',name:'PRP + Microneedling',price:12000},
+ {id:'microneedling',name:'Microneedling',price:10000,price_max:15000,pricing_type:'Range',description:'Price depends on the serum or booster used.'},
+ {id:'botox-korean',name:'Botox — Upper Face (Korean)',price:25000,aliases:['Korean Botox']},
+ {id:'botox-allergan',name:'Botox — Upper Face (Allergan)',price:45000,aliases:['Allergan Botox']},
+ {id:'filler',name:'Dermal Filler (1 ml)',price:35000},
+ {id:'boosters',name:'Skin Boosters',price:30000,pricing_type:'Starting from',description:'Starting price; final charge depends on the booster used.'},
+ {id:'hifu',name:'HIFU',price:25000},
+ {id:'peels',name:'Chemical Peels (Face)',price:8000},
+ {id:'glow-iv',name:'Glow IV Drip',price:12000,description:'PKR 12,000 per session.'}
+] as const;
