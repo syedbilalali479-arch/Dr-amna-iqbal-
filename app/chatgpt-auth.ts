@@ -1,9 +1,13 @@
 import { headers, cookies } from "next/headers";
-import {validSession,sessionCookie} from "../lib/railway-session";
+import {readSession,sessionCookie} from "../lib/railway-session";
+import {env} from '@/lib/runtime-env';
+import {staffForSession} from '../lib/staff-accounts';
+import type {ClinicRole} from '../lib/access-control';
 import { redirect } from "next/navigation";
 
 export type ChatGPTUser = {
   userId: string;
+  role: ClinicRole;
   displayName: string;
   email: string;
   fullName: string | null;
@@ -20,7 +24,13 @@ const SIGN_OUT_PATH = "/signout-with-chatgpt";
 const CALLBACK_PATH = "/callback";
 
 export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
-  if(process.env.DEPLOY_TARGET==='railway'){const jar=await cookies();if(!validSession(jar.get(sessionCookie)?.value||'',process.env.SESSION_SECRET||''))return null;return {userId:'clinic-admin',email:process.env.ADMIN_EMAIL||'admin@skinuvia.local',displayName:'Dr. Aamina Iqbal',fullName:'Dr. Aamina Iqbal'};}
+  if(process.env.DEPLOY_TARGET==='railway'){
+    const jar=await cookies(),identity=readSession(jar.get(sessionCookie)?.value||'',process.env.SESSION_SECRET||'');
+    if(!identity)return null;
+    if(identity.role==='admin')return {userId:'clinic-admin',role:'admin',email:process.env.ADMIN_EMAIL||'admin@skinuvia.local',displayName:'Dr. Aamina Iqbal',fullName:'Dr. Aamina Iqbal'};
+    const staff=await staffForSession(env.DB!,identity);if(!staff)return null;
+    return {userId:staff.id,role:'receptionist',email:staff.username+'@staff.skinuvia.local',displayName:staff.display_name,fullName:staff.display_name};
+  }
   const requestHeaders = await headers();
   const userId = requestHeaders.get(USER_ID_HEADER);
   const email = requestHeaders.get(USER_EMAIL_HEADER);
@@ -35,6 +45,7 @@ export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
 
   return {
     userId,
+    role: 'admin',
     displayName: fullName ?? email,
     email,
     fullName,

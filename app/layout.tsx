@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./brain.css";
+import "./staff-access.css";
 
 export const metadata: Metadata = {
   title: "Skinuvia — ClinicOS",
