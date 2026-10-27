@@ -6,6 +6,14 @@ const clinic='skinuvia';
 const appointmentColumns=['patient_id','patient_name','phone','doctor','service','appointment_date','appointment_time','status','payment_status','token','source','price','notes','parent_appointment_id'];
 export async function saveAppointment(db:D1Database,actor:string,input:BookingRequest){
  const r=input.record||{},editing=Boolean(r.id);
+ r.doctor='Dr. Aamina Iqbal';
+ if(r.source==='Walk-in'){
+  r.patient_name=String(r.patient_name||'Walk-in patient').trim()||'Walk-in patient';
+  r.phone=String(r.phone||'').trim();
+  r.appointment_date=String(r.appointment_date||new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Karachi',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()));
+  r.appointment_time=String(r.appointment_time||new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Karachi',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date()).replace(/:(\d{2})$/,(_,m)=>':'+String(Math.floor(Number(m)/15)*15).padStart(2,'0')));
+  r.service=String(r.service||'Skin Consultation').trim()||'Skin Consultation';
+ }
  if(!/^[a-f0-9-]{36}$/i.test(input.request_id||''))throw new Error('Missing booking request identifier');
  const id=editing?String(r.id):'APT-'+input.request_id;
  const previous=await db.prepare('SELECT * FROM appointments WHERE clinic_id=? AND id=?').bind(clinic,id).first<Row>();
@@ -13,7 +21,7 @@ export async function saveAppointment(db:D1Database,actor:string,input:BookingRe
  const storedBill=await db.prepare("SELECT id,body,revision FROM commerce_documents WHERE clinic_id=? AND kind='invoices' AND json_extract(body,'$.appointment_id')=?").bind(clinic,id).first<{id:string;body:string;revision:number}>();
  const existingInvoice=storedBill?{...JSON.parse(storedBill.body),id:storedBill.id,revision:storedBill.revision} as CommerceRecord:null;
  if(!editing&&previous)return {appointment:previous,invoice:existingInvoice,replayed:true};
- for(const key of ['patient_name','phone','doctor','service','appointment_date','appointment_time'])if(!String(r[key]||'').trim())throw new Error(key.replaceAll('_',' ')+' is required');
+ for(const key of ['patient_name','doctor','service','appointment_date','appointment_time'])if(!String(r[key]||'').trim())throw new Error(key.replaceAll('_',' ')+' is required');
  const date=String(r.appointment_date),time=String(r.appointment_time);
  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(date))||new Date(date).toISOString().slice(0,10)!==date)throw new Error('Enter a valid appointment date');
  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time))throw new Error('Enter a valid appointment time');

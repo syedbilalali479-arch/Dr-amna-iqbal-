@@ -42,8 +42,9 @@ export async function POST(request:Request) {
   }
   if(kind==='vendors'&&after&&stored){const earliest=await db.prepare("SELECT MIN(json_extract(body,'$.date')) AS date FROM commerce_documents WHERE clinic_id=? AND kind IN ('purchases','vendor_payments') AND json_extract(body,'$.vendor_id')=?").bind(clinic,recordId).first<{date:string|null}>();if(earliest?.date&&String(after.opening_date)>earliest.date)throw new Error('Opening balance date cannot be after existing purchases or payments');}
   if(after?.appointment_id&&after.state!=='Voided') {
-   const appointment=await db.prepare('SELECT patient_id FROM appointments WHERE clinic_id=? AND id=?').bind(clinic,String(after.appointment_id)).first<{patient_id:string}>();
+   const appointment=await db.prepare('SELECT patient_id,status,updated_at FROM appointments WHERE clinic_id=? AND id=?').bind(clinic,String(after.appointment_id)).first<{patient_id:string;status:string;updated_at:string}>();
    if(!appointment||appointment.patient_id!==after.patient_id)throw new Error('Invoice patient must match the appointment');
+   if(user.role==='receptionist'&&appointment.status==='Completed'&&Date.now()-new Date(appointment.updated_at.replace(' ','T')+'Z').getTime()>=86_400_000)throw new Error('Bill editing closes 24 hours after the appointment is completed.');
   }
   const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Karachi',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const pendingMedicines=new Map<string,Record<string,unknown>>();

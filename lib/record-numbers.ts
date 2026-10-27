@@ -1,5 +1,5 @@
 export type NumberedRow=Record<string,unknown>;
-export const numberPrefixes:Record<string,string>={patients:'MR',appointments:'AP',invoices:'INV',prescriptions:'RX',medicines:'MED',vendors:'VEN',purchases:'PUR',sales:'SALE',vendor_payments:'PAY',leads:'LEAD',followups:'FU',plans:'PLAN',promotions:'OFFER',treatments:'SVC',conversations:'CHAT',patterns:'RULE',stock_movements:'STK'};
+export const numberPrefixes:Record<string,string>={patients:'MR',appointments:'SR',invoices:'INV',prescriptions:'RX',medicines:'MED',vendors:'VEN',purchases:'PUR',sales:'SALE',vendor_payments:'PAY',leads:'LEAD',followups:'FU',plans:'PLAN',promotions:'OFFER',treatments:'SVC',conversations:'CHAT',patterns:'RULE',stock_movements:'STK'};
 export function formatRecordNumber(kind:string,n:number){return `${numberPrefixes[kind]||'REF'}-${String(n).padStart(3,'0')}`;}
 export function numberStatement(db:D1Database,clinic:string,kind:string,entity:string){return db.prepare('INSERT INTO record_numbers(clinic_id,kind,entity_id,number) SELECT ?,?,?,coalesce(max(number),0)+1 FROM record_numbers WHERE clinic_id=? AND kind=? ON CONFLICT(clinic_id,kind,entity_id) DO NOTHING').bind(clinic,kind,entity,clinic,kind);}
 export async function decorateRecords(db:D1Database,clinic:string,data:Record<string,unknown>){

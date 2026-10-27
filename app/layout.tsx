@@ -5,7 +5,7 @@ import "./staff-access.css";
 
 export const metadata: Metadata = {
   title: "Skinuvia — ClinicOS",
-  description: "Clinic operations for Skinuvia by Dr. Amna Iqbal.",
+  description: "Clinic operations for Skinuvia by Dr. Aamina Iqbal.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
