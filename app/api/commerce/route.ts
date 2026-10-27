@@ -20,6 +20,7 @@ export async function POST(request:Request) {
  try {
   const {resource:kind,operation,record:input}=await request.json() as {resource:string;operation:string;record:CommerceRecord};
   if(!commerceKinds.includes(kind as typeof commerceKinds[number])||!['create','update','delete','cancel'].includes(operation))throw new Error('Unsupported operation');
+  if(user.role==='receptionist'&&kind==='purchases'&&operation!=='create')return Response.json({error:'Medicine purchases can only be edited or deleted by the doctor.'},{status:403});
   const db=env.DB!; const recordId=String(input.id||id());
   const stored=await db.prepare('SELECT body,revision FROM commerce_documents WHERE clinic_id=? AND id=? AND kind=?').bind(clinic,recordId,kind).first<{body:string;revision:number}>();
   if(operation!=='create'&&!stored)return Response.json({error:'Record no longer exists. Refresh the page.'},{status:404});
