@@ -2,6 +2,7 @@ import {canAccessModule} from '../../../lib/access-control';
 import {deletePatient} from '../../../lib/delete-patient';
 import {decorateRecords} from '../../../lib/record-numbers';
 import {deleteAppointment} from '../../../lib/delete-appointment';
+import {deleteMedicineAndReverseHistory} from '../../../lib/delete-medicine';
 import { env } from "@/lib/runtime-env";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { normalizeMessage } from "../../../lib/ai/ai-brain";
@@ -26,7 +27,7 @@ export async function POST(request:Request){try{const user=await getChatGPTUser(
  if(resource==="patterns"&&record.phrase)record.normalized_phrase=normalizeMessage(String(record.phrase));if(body.operation==='delete'){
  if(resource==='appointments')return Response.json(await deleteAppointment(env.DB!,user.userId,recordId));
  if(resource==='patients')return Response.json(await deletePatient(env.DB!,recordId));
- if(resource==='medicines'){const linked=await env.DB!.prepare("SELECT id FROM stock_movements WHERE clinic_id=? AND medicine_id=? LIMIT 1").bind(CLINIC,recordId).first();const docs=await env.DB!.prepare("SELECT d.id FROM commerce_documents d,json_each(d.body,'$.items') item WHERE d.clinic_id=? AND json_extract(item.value,'$.medicine_id')=? LIMIT 1").bind(CLINIC,recordId).first();if(linked||docs)return Response.json({error:'This batch has purchase or sales history. Edit its details instead of deleting it.'},{status:400});}
+ if(resource==='medicines'){if(user.role!=='admin')return Response.json({error:'Only the doctor can delete medicine history.'},{status:403});return Response.json(await deleteMedicineAndReverseHistory(env.DB!,user.userId,recordId));}
  const previous=await env.DB!.prepare(`SELECT * FROM ${table} WHERE id=? AND clinic_id=?`).bind(recordId,CLINIC).first();const deletes=[env.DB!.prepare(`DELETE FROM ${table} WHERE id=? AND clinic_id=?`).bind(recordId,CLINIC)];if(resource==='appointments')deletes.push(env.DB!.prepare("UPDATE followups SET status='Cancelled',updated_at=CURRENT_TIMESTAMP WHERE clinic_id=? AND id=?").bind(CLINIC,'FU-'+recordId));deletes.push(env.DB!.prepare('INSERT INTO audit_logs(id,clinic_id,actor_id,action,entity_type,entity_id,detail) VALUES(?,?,?,?,?,?,?)').bind(makeId('AUD'),CLINIC,user.userId,'DELETE',resource,recordId,JSON.stringify({before:previous})));await env.DB!.batch(deletes);return Response.json({ok:true,id:recordId})}if(body.operation==='update'){
  if(resource==='medicines'){
  const current=await env.DB!.prepare('SELECT * FROM medicines WHERE clinic_id=? AND id=?').bind(CLINIC,recordId).first<Record<string,unknown>>();if(!current)return Response.json({error:'Medicine not found'},{status:404});

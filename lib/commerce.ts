@@ -1,4 +1,4 @@
-export type Line = {medicine_id?:string;medicine_name?:string;batch?:string;expiry?:string;generic_name?:string;selling_price?:number; description:string; quantity:number; price:number};
+export type Line = {medicine_id?:string;medicine_name?:string;batch?:string;expiry?:string;generic_name?:string;selling_price?:number;minimum_stock?:number; description:string; quantity:number; price:number};
 export type CommerceRecord = Record<string, unknown> & {id?:string; revision?:number; items?:Line[]};
 export const commerceKinds = ['vendors','purchases','sales','vendor_payments','invoices'] as const;
 export function amount(value:unknown, label:string) {

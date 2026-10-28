@@ -1,0 +1,13 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {SQLiteD1} from '../lib/sqlite-d1.ts';
+import {deleteMedicineAndReverseHistory} from '../lib/delete-medicine.ts';
+import {normalizeDocument} from '../lib/commerce.ts';
+
+test('deleting a medicine reverses its linked purchase and sale history',async()=>{const sqlite=new SQLiteD1(':memory:','drizzle'),db=sqlite as unknown as D1Database;try{
+ sqlite.connection.exec("INSERT INTO medicines(id,clinic_id,name,batch,expiry,quantity) VALUES('med-a','skinuvia','Cream','A1','2030-01-01',4),('med-b','skinuvia','Wash','B1','2030-01-01',8)");
+ const purchase=normalizeDocument('purchases',{vendor_id:'vendor',vendor_name:'Vendor',date:'2026-10-27',state:'Finalized',items:[{medicine_id:'med-a',description:'Cream',quantity:10,price:100}],discount:0,paid:1000}),sale=normalizeDocument('sales',{patient_id:'patient',patient_name:'Patient',date:'2026-10-27',state:'Finalized',items:[{medicine_id:'med-a',description:'Cream',quantity:2,price:300},{medicine_id:'med-b',description:'Wash',quantity:1,price:500}],discount:100,paid:1000});
+ sqlite.connection.prepare("INSERT INTO commerce_documents(id,clinic_id,kind,body) VALUES('purchase','skinuvia','purchases',?),('sale','skinuvia','sales',?)").run(JSON.stringify(purchase),JSON.stringify(sale));
+ sqlite.connection.exec("INSERT INTO stock_movements(id,clinic_id,medicine_id,document_id,quantity,reason) VALUES('move-a1','skinuvia','med-a','purchase',10,'purchase'),('move-a2','skinuvia','med-a','sale',-2,'sale'),('move-b','skinuvia','med-b','sale',-1,'sale')");
+ const result=await deleteMedicineAndReverseHistory(db,'doctor','med-a');assert.equal(result.revertedDocuments,2);assert.equal(await db.prepare("SELECT id FROM medicines WHERE id='med-a'").first(),null);assert.equal(await db.prepare("SELECT id FROM commerce_documents WHERE id='purchase'").first(),null);
+ const stored=await db.prepare("SELECT body,revision FROM commerce_documents WHERE id='sale'").first<{body:string;revision:number}>(),updated=JSON.parse(stored!.body);assert.equal(stored!.revision,2);assert.equal(updated.items.length,1);assert.equal(updated.items[0].medicine_id,'med-b');assert.equal(updated.total,500);assert.equal(updated.discount,100);assert.equal(updated.paid,400);assert.equal((await db.prepare("SELECT count(*) n FROM stock_movements WHERE medicine_id='med-a'").first<{n:number}>())!.n,0);assert.ok(await db.prepare("SELECT id FROM stock_movements WHERE id='move-b'").first());assert.ok(await db.prepare("SELECT id FROM audit_logs WHERE action='DELETE_AND_REVERSE' AND entity_id='med-a'").first());
+ }finally{sqlite.close()}});
