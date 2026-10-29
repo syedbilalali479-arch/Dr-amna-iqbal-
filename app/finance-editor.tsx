@@ -20,7 +20,7 @@ export function FinanceEditor({kind,initial,data,close,saved,remove,role}:{kind:
  const set=(key:string,value:unknown)=>setRecord(old=>({...old,[key]:value}));
  const items=(record.items||[]) as Entry[],vendors=data.vendors||[],patients=data.patients||[],medicines=data.medicines||[];
  const selectedVendor=vendors.find(v=>v.id===record.vendor_id),selectedPatient=patients.find(p=>p.id===record.patient_id);
- const outstanding=selectedVendor?vendorBalance(selectedVendor,data.purchases||[],data.vendor_payments||[]):0;
+ const outstanding=selectedVendor?vendorBalance(selectedVendor,data.purchases||[],data.vendor_payments||[],kind==='purchases'?record.id:undefined):0;
  const subtotal=items.reduce((sum,item)=>sum+Number(item.quantity||0)*Number(item.price||0),0),net=Math.max(0,subtotal-Number(record.discount||0));
  const line=(index:number,patch:Partial<Entry>)=>set('items',items.map((item,i)=>i===index?{...item,...patch}:item));
  const addBlank=()=>set('items',[...items,{description:'',medicine_name:'',quantity:1,price:0,selling_price:0,batch:'',expiry:'',minimum_stock:10}]);

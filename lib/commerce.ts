@@ -49,6 +49,6 @@ export function stockDelta(kind:string,before:CommerceRecord|null,after:Commerce
  const old=stockEffect(kind,before), next=stockEffect(kind,after);
  return new Map([...new Set([...old.keys(),...next.keys()])].map(id=>[id,(next.get(id)||0)-(old.get(id)||0)]).filter(([,n])=>n!==0) as [string,number][]);
 }
-export function vendorBalance(vendor:CommerceRecord,purchases:CommerceRecord[],payments:CommerceRecord[]) {
- return Math.round((Number(vendor.opening_balance||0)*(vendor.balance_type==='Advance credit'?-1:1)+purchases.filter(p=>p.vendor_id===vendor.id&&p.state==='Finalized').reduce((n,p)=>n+Number(p.net||0)-Number(p.paid||0),0)-payments.filter(p=>p.vendor_id===vendor.id).reduce((n,p)=>n+Number(p.amount||0),0))*100)/100;
+export function vendorBalance(vendor:CommerceRecord,purchases:CommerceRecord[],payments:CommerceRecord[],excludedPurchaseId?:unknown) {
+ return Math.round((Number(vendor.opening_balance||0)*(vendor.balance_type==='Advance credit'?-1:1)+purchases.filter(p=>p.vendor_id===vendor.id&&p.state==='Finalized'&&(!excludedPurchaseId||p.id!==excludedPurchaseId)).reduce((n,p)=>n+Number(p.net||0)-Number(p.paid||0),0)-payments.filter(p=>p.vendor_id===vendor.id).reduce((n,p)=>n+Number(p.amount||0),0))*100)/100;
 }
