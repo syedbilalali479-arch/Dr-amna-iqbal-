@@ -23,7 +23,7 @@ export function findBarcodeMedicine(medicines:BarcodeMedicine[],parsed:ScannedBa
 
 export function scannedMedicineLine(medicine:BarcodeMedicine,kind:'purchases'|'sales',parsed:ScannedBarcode):Line{
  const name=String(medicine.name||'');
- return {medicine_id:String(medicine.id),medicine_name:name,description:name,quantity:1,
+ return {medicine_id:String(medicine.id),medicine_name:name,description:name,quantity:0,
   price:Number(kind==='purchases'?medicine.purchase_rate:medicine.selling_price)||0,
   selling_price:Number(medicine.selling_price)||0,generic_name:String(medicine.generic_name||''),
   batch:String(medicine.batch||parsed.batch),expiry:String(medicine.expiry||parsed.expiry),minimum_stock:Number(medicine.minimum_stock??10)};
@@ -32,5 +32,5 @@ export function scannedMedicineLine(medicine:BarcodeMedicine,kind:'purchases'|'s
 export function addScannedMedicine(items:Line[],medicine:BarcodeMedicine,kind:'purchases'|'sales',parsed:ScannedBarcode){
  const hydrated=scannedMedicineLine(medicine,kind,parsed),found=items.findIndex(item=>item.medicine_id===hydrated.medicine_id);
  if(found<0)return [...items,hydrated];
- return items.map((item,index)=>index===found?{...item,...hydrated,quantity:Number(item.quantity||0)+1}:item);
+ return items.map((item,index)=>index===found?{...item,...hydrated,quantity:Number(item.quantity||0)}:item);
 }

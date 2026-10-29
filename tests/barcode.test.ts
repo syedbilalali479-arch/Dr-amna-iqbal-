@@ -13,12 +13,13 @@ test('plain barcode finds inventory and fills medicine name and unit prices',()=
  assert.equal(purchase.price,275);
  assert.equal(purchase.selling_price,350);
  assert.equal(sale.price,350);
+ assert.equal(sale.quantity,0);
 });
 
-test('repeat scan hydrates stale row fields while increasing quantity',()=>{
+test('repeat scan hydrates stale row fields without guessing quantity',()=>{
  const parsed=barcodeDetails('8964000000014');
  const items=addScannedMedicine([{medicine_id:'med-1',medicine_name:'',description:'',quantity:1,price:0}],medicine,'sales',parsed);
- assert.deepEqual({quantity:items[0].quantity,name:items[0].medicine_name,price:items[0].price},{quantity:2,name:'Skinuvia Test Cream',price:350});
+ assert.deepEqual({quantity:items[0].quantity,name:items[0].medicine_name,price:items[0].price},{quantity:1,name:'Skinuvia Test Cream',price:350});
 });
 
 test('GS1 scan supports GTIN, batch and expiry data',()=>{
