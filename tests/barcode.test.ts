@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {addScannedMedicine,barcodeDetails,findBarcodeMedicine} from '../lib/barcode.ts';
 
-const medicine={id:'med-1',name:'Skinuvia Test Cream',barcode:'8964000000011',batch:'BATCH-01',purchase_rate:275,selling_price:350,expiry:'2028-12-31',minimum_stock:5};
+const medicine={id:'med-1',name:'Skinuvia Test Cream',barcode:'8964000000014',batch:'BATCH-01',purchase_rate:275,selling_price:350,expiry:'2028-12-31',minimum_stock:5};
 
 test('plain barcode finds inventory and fills medicine name and unit prices',()=>{
- const parsed=barcodeDetails('8964000000011');
+ const parsed=barcodeDetails('8964000000014');
  const found=findBarcodeMedicine([medicine],parsed)!;
  const purchase=addScannedMedicine([],found,'purchases',parsed)[0];
  const sale=addScannedMedicine([],found,'sales',parsed)[0];
@@ -16,7 +16,7 @@ test('plain barcode finds inventory and fills medicine name and unit prices',()=
 });
 
 test('repeat scan hydrates stale row fields while increasing quantity',()=>{
- const parsed=barcodeDetails('8964000000011');
+ const parsed=barcodeDetails('8964000000014');
  const items=addScannedMedicine([{medicine_id:'med-1',medicine_name:'',description:'',quantity:1,price:0}],medicine,'sales',parsed);
  assert.deepEqual({quantity:items[0].quantity,name:items[0].medicine_name,price:items[0].price},{quantity:2,name:'Skinuvia Test Cream',price:350});
 });
