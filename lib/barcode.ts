@@ -1,7 +1,7 @@
 import type {CommerceRecord,Line} from './commerce';
 
 export type BarcodeMedicine=CommerceRecord&{barcode?:string;batch?:string;name?:string;purchase_rate?:number;selling_price?:number;expiry?:string;minimum_stock?:number;generic_name?:string};
-export type ScannedBarcode={code:string;gtin:string;batch:string;expiry:string;candidates:string[]};
+export type ScannedBarcode={code:string;gtin:string;batch:string;encodedBatch:string;expiry:string;candidates:string[]};
 
 const groupSeparator=String.fromCharCode(29);
 const clean=(value:unknown)=>String(value||'').trim().toLowerCase();
@@ -14,7 +14,7 @@ export function barcodeDetails(raw:string):ScannedBarcode{
  const expiry=variableAis.match(/(?:^|\x1d)17(\d{6})/)?.[1]||variableAis.match(/17(\d{6})$/)?.[1]||'';
  const batch=variableAis.match(/(?:^|\x1d)10([^\x1d]+)/)?.[1].replace(/17\d{6}$/,'')||'';
  const expiryDate=expiry?`20${expiry.slice(0,2)}-${expiry.slice(2,4)}-${expiry.slice(4,6)}`:'';
- return {code,gtin,batch:batch||code,expiry:expiryDate,candidates:[code,gtin,batch].map(clean).filter(Boolean)};
+ return {code,gtin,batch:batch||code,encodedBatch:batch,expiry:expiryDate,candidates:[code,gtin,batch].map(clean).filter(Boolean)};
 }
 
 export function findBarcodeMedicine(medicines:BarcodeMedicine[],parsed:ScannedBarcode){
