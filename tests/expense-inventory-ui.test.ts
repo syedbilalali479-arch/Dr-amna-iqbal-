@@ -36,3 +36,11 @@ test('forms only require essential fields and vendor phone is removed',()=>{
  assert.match(vendorForm,/Opening outstanding \(optional\)/);
  assert.doesNotMatch(vendorForm,/Phone number/);
 });
+
+test('medicine sale discount uses a percentage input with a fixed percent symbol',()=>{
+ assert.match(editorSource,/aria-label="Discount percentage"/);
+ assert.match(editorSource,/<b aria-hidden="true">%<\/b>/);
+ assert.match(editorSource,/kind==='sales'.*discount:discountAmount/);
+ const salesForm=editorSource.match(/kind==='sales'&&<[^\n]+/)?.[0]||'';
+ assert.doesNotMatch(salesForm,/Discount \(PKR\)/);
+});

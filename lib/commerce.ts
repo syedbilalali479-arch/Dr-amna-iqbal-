@@ -5,6 +5,10 @@ export function amount(value:unknown, label:string) {
  const n=Number(value ?? 0); if(!Number.isFinite(n)||n<0||n>1e10)throw new Error(`${label} must be a valid non-negative amount`);
  return Math.round(n*100)/100;
 }
+export function percentageDiscount(subtotal:unknown, percent:unknown) {
+ const total=Number(subtotal||0),rate=Math.min(100,Math.max(0,Number(percent)||0));
+ return Math.round(total*rate)/100;
+}
 export function normalizeDocument(kind:string, input:CommerceRecord):CommerceRecord {
  const r={...input};
  if(kind==='vendors') {

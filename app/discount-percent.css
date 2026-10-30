@@ -1,0 +1,4 @@
+.percentField>div{position:relative}
+.percentField>div input{padding-right:38px}
+.percentField>div>b{position:absolute;right:13px;top:50%;transform:translateY(-50%);margin:0;color:var(--brand);font-size:15px;pointer-events:none}
+.percentField>small{margin-top:5px;color:var(--muted)}

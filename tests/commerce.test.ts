@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeDocument,stockDelta,vendorBalance,type CommerceRecord} from '../lib/commerce.ts';
+import {normalizeDocument,percentageDiscount,stockDelta,vendorBalance,type CommerceRecord} from '../lib/commerce.ts';
 const doc:CommerceRecord={state:'Finalized',date:'2026-10-25',patient_id:'p1',patient_name:'Test',items:[{medicine_id:'m1',description:'Cleanser',quantity:3,price:125}],discount:25,paid:100};
 test('calculates invoice subtotal, net, payment state and balance',()=>{const r=normalizeDocument('sales',doc);assert.equal(r.total,375);assert.equal(r.net,350);assert.equal(r.balance,250);assert.equal(r.status,'Partially Paid')});
+test('converts sale discount percentage to a rounded PKR amount',()=>{assert.equal(percentageDiscount(1500,10),150);assert.equal(percentageDiscount(999,12.5),124.88);assert.equal(percentageDiscount(500,120),500)});
 test('rejects invalid and overpaid invoices',()=>{assert.throws(()=>normalizeDocument('sales',{...doc,paid:500}),/cannot exceed/);assert.throws(()=>normalizeDocument('sales',{...doc,discount:500}),/cannot exceed/);assert.throws(()=>normalizeDocument('sales',{...doc,items:[{description:'x',medicine_id:'m1',quantity:1.5,price:5}]}),/whole numbers/);assert.throws(()=>normalizeDocument('sales',{...doc,paid:-1}),/non-negative/)});
 test('drafts never change stock; finalizing adds purchase stock',()=>{assert.equal(stockDelta('purchases',null,{...doc,state:'Draft'}).size,0);assert.equal(stockDelta('purchases',null,doc).get('m1'),3)});
 test('editing finalized sales posts the difference, and voiding restores stock',()=>{assert.equal(stockDelta('sales',doc,{...doc,items:[{medicine_id:'m1',description:'Cleanser',quantity:5,price:125}]}).get('m1'),-2);assert.equal(stockDelta('sales',doc,{...doc,state:'Voided'}).get('m1'),3);assert.equal(stockDelta('sales',doc,{...doc,paid:300}).size,0)});

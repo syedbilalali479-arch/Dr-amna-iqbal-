@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./pharmacy.css";
+@import "./discount-percent.css";
 @import "./prescription.css";
 @import "./appointment.css";
 @import "./enhancements.css";
