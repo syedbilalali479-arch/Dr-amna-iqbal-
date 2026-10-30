@@ -25,3 +25,14 @@ test('vendor ledger supports monthly running balances and all-history view',()=>
  for(const text of ['Statement month','Opening balance','Closing balance','Current outstanding','All history','Print ledger'])assert.ok(pharmacySource.includes(text),text);
  assert.match(pharmacySource,/running:running=/);
 });
+
+test('forms only require essential fields and vendor phone is removed',()=>{
+ assert.match(consoleSource,/const requiredFields:/);
+ assert.match(consoleSource,/medicines:\['name'\]/);
+ assert.match(consoleSource,/required=\{required\}/);
+ const vendorForm=editorSource.match(/kind==='vendors'&&<div[^\n]+/)?.[0]||'';
+ assert.match(vendorForm,/Company name/);
+ assert.match(vendorForm,/Representative name \(optional\)/);
+ assert.match(vendorForm,/Opening outstanding \(optional\)/);
+ assert.doesNotMatch(vendorForm,/Phone number/);
+});
