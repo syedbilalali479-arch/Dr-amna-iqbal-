@@ -3,6 +3,7 @@ import {useCallback,useEffect,useMemo,useRef,useState} from "react";
 import {canAccessModule,homeModule,roleLabel,type ClinicRole} from '../lib/access-control';
 import {StaffAccessSettings} from './staff-access-settings';
 import {emptyClinicData,fetchClinicRecords,mergeClinicRecords} from '../lib/clinic-records';
+import {matchesSearch} from '../lib/search';
 import {ChoiceInput} from '../components/choice-input';
 import {ConfirmActionDialog} from '../components/confirm-action-dialog';
 import {AppointmentEditor} from './appointment-editor';
@@ -58,7 +59,7 @@ export default function ClinicConsole({user}:{user:{name:string,email:string,rol
   finally{if(request===requestNumber.current)setLoading(false);}
  },[]);
  useEffect(()=>{void load();setTime(pkNow());const t=setInterval(()=>setTime(pkNow()),1000);return()=>{requestNumber.current++;clearInterval(t)}},[load]);
- const rows=(data[section]||[]).filter(r=>(section!=='appointments'||r.appointment_date===appointmentDate)&&Object.values(r).join(" ").toLowerCase().includes(search.toLowerCase()));
+ const rows=(data[section]||[]).filter(r=>(section!=='appointments'||r.appointment_date===appointmentDate)&&matchesSearch(r,search));
  const show=(m:string)=>{setToast(m);setTimeout(()=>setToast(""),2800)};
  const open=(row:Row|null=null)=>{if(section==='appointments'){setAppointmentEditing(row||{});return;}setEditing(row);setModal(true)};
  const save=async(e:React.FormEvent<HTMLFormElement>)=>{e.preventDefault();if(saving)return;setSaving(true);try{const form=new FormData(e.currentTarget);const record:Object=Object.fromEntries(form);for(const f of configs[section].fields)if(f.type==="number"&&(record as Row)[f.key]!=="")(record as Row)[f.key]=Number((record as Row)[f.key]);if(section!=="patients"&&["appointments","prescriptions","invoices","followups","plans"].includes(section))(record as Row).patient_id=(editing?.patient_id as string)||"unlinked";if(section==="prescriptions"&&(record as Row).status==="Approved")(record as Row).approved_at=new Date().toISOString();if(editing?.id)(record as Row).id=editing.id;if(section==='medicines'&&editing?.id)(record as Row).expected_quantity=editing.quantity;if(editing?.parent_appointment_id)(record as Row).parent_appointment_id=editing.parent_appointment_id;if(section==='appointments'&&(record as Row).token==='')(record as Row).token=null;const ai=section==="conversations"&&!editing;const endpoint=ai?"/api/ai":"/api/clinic";const payload=ai?{name:(record as Row).contact_name,phone:(record as Row).phone,message:(record as Row).last_message}:{resource:section,operation:editing?.id?"update":"create",record};const r=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});const j=await r.json() as Record<string,any>;if(!r.ok){show(j.error||"Save failed");return}setModal(false);setEditing(null);await load();if(resumePrescription){setPrescriptionEditing(resumePrescription);setResumePrescription(null)}show(ai?j.response:(editing?.id?"Record updated":"Record saved securely"))}catch(e){show(e instanceof Error?e.message:"Save failed")}finally{setSaving(false)}};

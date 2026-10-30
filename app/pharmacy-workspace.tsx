@@ -7,6 +7,7 @@ export {FinanceEditor} from './finance-editor';
 export {printInvoice} from '../lib/invoice-print';
 import {Plus,Printer,X,Trash2,MoreHorizontal,Package,AlertTriangle} from 'lucide-react';
 import {vendorBalance,type CommerceRecord,type Line} from '../lib/commerce';
+import {matchesSearch} from '../lib/search';
 type Row=CommerceRecord; type Data=Record<string,Row[]>;
 const titles:Record<string,string>={vendors:'Vendors',purchases:'Medicine Purchases',sales:'Medicine Sales',vendor_payments:'Vendor Payments',expenses:'Expenses',invoices:'Clinical Bills'};
 const labels:Record<string,string>={vendors:'Add vendor',purchases:'New medicine purchase',sales:'Sell medicine',vendor_payments:'Record vendor payment',expenses:'Add expense',invoices:'Create bill'};
@@ -28,7 +29,7 @@ export function StockLedger({data}:{data:Data}) {
 }
 export function FinanceWorkspace({section,data,search,reload,show,legacyEdit,role}:{section:string;data:Data;search:string;reload:()=>Promise<void>;show:(m:string)=>void;legacyEdit:(r:Row)=>void;role:'admin'|'receptionist'}) {
  const [editing,setEditing]=useState<Row|null>(null),[paying,setPaying]=useState<Row|null>(null),[busy,setBusy]=useState(false),[history,setHistory]=useState<Row|null>(null),[pendingDelete,setPendingDelete]=useState<Row|null>(null);
- const rows=(data[section]||[]).filter(r=>JSON.stringify(r).toLowerCase().includes(search.toLowerCase()));
+ const rows=(data[section]||[]).filter(r=>matchesSearch(r,search));
  const remove=(r:Row)=>setPendingDelete(r);
  const deleteRecord=async()=>{if(!pendingDelete)return;await mutate(section,'delete',pendingDelete);setEditing(null);setPendingDelete(null);await reload();show('Record deleted. Stock and account balances updated.');};
  const cols=section==='vendors'?['number','representative_name','company_name','current_balance']:section==='vendor_payments'?['number','vendor_name','date','amount']:section==='expenses'?['number','expense_name','date','total_amount']:['number',section==='purchases'?'vendor_name':'patient_name','date','net','paid','balance','status'];
