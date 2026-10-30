@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {printInvoice,printReadyWindow} from '../lib/invoice-print.ts';
+import {readFileSync} from 'node:fs';
 
 test('medicine sale receipt shows sale columns and excludes batch and expiry',()=>{
  let html='';
@@ -17,4 +18,12 @@ test('waits for a loading print document before opening browser preview',()=>{
  assert.equal(printed,0);
  loaded?.(new Event('load'));
  assert.equal(printed,1);
+});
+
+test('browser printing uses a real same-origin document instead of about blank',()=>{
+ const helper=readFileSync(new URL('../lib/invoice-print.ts',import.meta.url),'utf8'),route=readFileSync(new URL('../app/print-document/route.ts',import.meta.url),'utf8'),appointment=readFileSync(new URL('../app/appointment-editor.tsx',import.meta.url),'utf8');
+ assert.match(helper,/\/print-document\?key=/);
+ assert.match(route,/DOMParser/);
+ assert.doesNotMatch(route,/document\.open\(|document\.write\(/);
+ assert.doesNotMatch(appointment,/window\.open\('','_blank'/);
 });
