@@ -44,3 +44,13 @@ test('medicine sale discount uses a percentage input with a fixed percent symbol
  const salesForm=editorSource.match(/kind==='sales'&&<[^\n]+/)?.[0]||'';
  assert.doesNotMatch(salesForm,/Discount \(PKR\)/);
 });
+
+test('account book supports month and date range filters with outstanding summaries',()=>{
+ for(const text of ['type="month"','From date','To date','Customer outstanding','Vendor outstanding','Company-wise outstanding'])assert.ok(accountSource.includes(text),text);
+ assert.match(accountSource,/vendorBalance/);
+});
+
+test('appointment editor supports adding and removing multiple services',()=>{
+ const appointmentSource=readFileSync(new URL('../app/appointment-editor.tsx',import.meta.url),'utf8');
+ for(const text of ['Add service','Services / treatments','service_items','Total service price'])assert.ok(appointmentSource.includes(text),text);
+});

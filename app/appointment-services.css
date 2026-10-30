@@ -1,0 +1,7 @@
+.appointmentServices{display:grid;gap:8px}
+.appointmentServicesHead{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11px}
+.appointmentServicesHead>button{display:flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--brand);padding:7px 9px}
+.appointmentServiceLine{display:grid;grid-template-columns:minmax(0,1fr) 135px 34px;gap:8px;align-items:center}
+.appointmentServiceLine>button{height:36px;border:0;background:transparent;color:var(--danger)}
+.appointmentServiceLine>button:disabled{opacity:.25}
+@media(max-width:650px){.appointmentServiceLine{grid-template-columns:minmax(0,1fr) 100px 30px}.appointmentServicesHead{align-items:flex-start;flex-direction:column}}
