@@ -1,7 +1,7 @@
 export type ClinicRow=Record<string,unknown>;
 export type ClinicData=Record<string,ClinicRow[]>;
 export const clinicKeys=['patients','appointments','prescriptions','medicines','invoices','leads','followups','plans','promotions','treatments','conversations','patterns','learning','states','audit'] as const;
-export const pharmacyKeys=['vendors','purchases','sales','vendor_payments','invoices','stock_movements'] as const;
+export const pharmacyKeys=['vendors','purchases','sales','vendor_payments','expenses','invoices','stock_movements'] as const;
 export function emptyClinicData():ClinicData{return Object.fromEntries([...new Set([...clinicKeys,...pharmacyKeys])].map(key=>[key,[]]));}
 export type RecordsError={source:'clinic'|'pharmacy';message:string;status?:number};
 class RequestError extends Error {constructor(message:string,readonly status?:number){super(message)}}

@@ -1,6 +1,6 @@
 export type Line = {medicine_id?:string;medicine_name?:string;barcode?:string;batch?:string;expiry?:string;generic_name?:string;selling_price?:number;minimum_stock?:number; description:string; quantity:number; price:number};
 export type CommerceRecord = Record<string, unknown> & {id?:string; revision?:number; items?:Line[]};
-export const commerceKinds = ['vendors','purchases','sales','vendor_payments','invoices'] as const;
+export const commerceKinds = ['vendors','purchases','sales','vendor_payments','expenses','invoices'] as const;
 export function amount(value:unknown, label:string) {
  const n=Number(value ?? 0); if(!Number.isFinite(n)||n<0||n>1e10)throw new Error(`${label} must be a valid non-negative amount`);
  return Math.round(n*100)/100;
@@ -15,6 +15,9 @@ export function normalizeDocument(kind:string, input:CommerceRecord):CommerceRec
  } else if(kind==='vendor_payments') {
   if(!r.vendor_id&&!r.vendor_name)throw new Error('Select or enter a vendor');
   r.amount=amount(r.amount,'Payment'); if(!r.amount)throw new Error('Payment must be greater than zero');
+ } else if(kind==='expenses') {
+  r.expense_name=String(r.expense_name||'').trim();if(!r.expense_name)throw new Error('Expense name is required');
+  r.total_amount=amount(r.total_amount,'Total amount');if(!r.total_amount)throw new Error('Total amount must be greater than zero');
  } else {
   if(!['Draft','Finalized','Voided'].includes(String(r.state)))throw new Error('Select a document state');
   if(kind==='purchases'&&!r.vendor_id&&!r.vendor_name)throw new Error('Select or enter a vendor');
