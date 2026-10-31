@@ -1,5 +1,5 @@
 export type ClinicRole='admin'|'receptionist';
-export const receptionistModules=['appointments','patients','treatments','prescriptions','medicines','sales','vendors','purchases','vendor_payments','expenses','invoices','leads','followups','plans','promotions'] as const;
+export const receptionistModules=['appointments','patients','treatments','prescriptions','medicines','sales','vendors','purchases','vendor_payments','expenses','invoices','leads','followups','plans','promotions','promotional_messages'] as const;
 const adminModules=['overview','accounts','analytics','settings','conversations','patterns','learning','states','audit','staff'] as const;
 export function canAccessModule(role:ClinicRole,module:string){
  if(role!=='admin'&&role!=='receptionist')return false;
