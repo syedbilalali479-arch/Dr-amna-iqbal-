@@ -20,20 +20,82 @@ function printMedicineLines(r:Prescription):string[]{
  const notes=String(r.medicine_notes||'').trim();if(notes)out.push(...notes.split('\n'));return out;
 }
 function linesFromLegacy(text:string){return text.split('\n');}
+function drawPreprintedMedicines(ctx:CanvasRenderingContext2D,r:Prescription){
+ const meds=medicineRows(r.medicine_items);
+ const notes=String(r.medicine_notes||'').trim();
+ const advice=String(r.instructions||'').trim();
+ const legacy=meds.length?[]:linesFromLegacy(String(r.medicines||'')).filter(Boolean);
+ const startY=340, bottomY=1515, leftX=345, rightX=1120, available=bottomY-startY;
+ // Measure actual wrapped text at each candidate font size. Never clip or spill onto another page.
+ for(const fontSize of [27,25,23,21,19,17,15]){
+  const nameFont='bold '+fontSize+'px Arial';
+  const detailFont=fontSize+'px "Noto Naskh Arabic", Arial';
+  const lineHeight=Math.ceil(fontSize*1.45);
+  const padding=Math.ceil(fontSize*.45);
+  const blocks:{name:string[];details:string[];directions:string[]}[]=[];
+  let total=0;
+  for(const m of meds){
+   ctx.font=nameFont;
+   const name=lines(ctx,(blocks.length+1)+'. '+m.name+(m.strength?' ('+m.strength+')':''),rightX-leftX-12);
+   ctx.font=detailFont;
+   const details=[m.frequency&&urduFrequency(m.frequency),m.dose&&urduAmount(m.dose),m.duration&&urduDuration(m.duration)].filter(Boolean) as string[];
+   const directions=m.instructions?lines(ctx,urduDirections(m.instructions),rightX-leftX-12):[];
+   blocks.push({name,details,directions});
+   total+=(name.length+Math.max(details.length?1:0,0)+directions.length)*lineHeight+padding*2;
+  }
+  ctx.font=detailFont;
+  const extra=notes?lines(ctx,notes,rightX-leftX-12):legacy.flatMap(t=>lines(ctx,t,rightX-leftX-12));
+  total+=extra.length*lineHeight+(extra.length?padding:0);
+  ctx.font=fontSize+'px Arial';
+  const adviceLines=advice?lines(ctx,advice,rightX-leftX-12):[];
+  total+=adviceLines.length*lineHeight+(adviceLines.length?lineHeight+padding*2:0);
+  if(total>available)continue;
+  let y=startY;
+  ctx.fillStyle='#242424';ctx.strokeStyle='#a5a5a5';ctx.lineWidth=1;
+  for(const block of blocks){
+   ctx.font=nameFont;
+   for(const nameLine of block.name){y+=lineHeight;drawLine(ctx,nameLine,leftX,rightX,y);}
+   if(block.details.length){
+    y+=lineHeight;ctx.font=detailFont;
+    // Three evenly spaced Urdu values: frequency, dose, duration, without headings.
+    const xs=[leftX+155,leftX+455,rightX-90];
+    for(let i=0;i<block.details.length;i++){
+     const detail=block.details[i];const column=i===0?0:i===1?1:2;
+     ctx.save();ctx.direction=/[\u0600-\u06ff]/.test(detail)?'rtl':'ltr';ctx.textAlign='center';
+     ctx.fillText(detail,xs[column],y, column===0?245:column===1?245:175);ctx.restore();
+    }
+   }
+   ctx.font=detailFont;
+   for(const direction of block.directions){y+=lineHeight;drawLine(ctx,direction,leftX+20,rightX,y);}
+   y+=padding;ctx.beginPath();ctx.moveTo(leftX,y);ctx.lineTo(rightX,y);ctx.stroke();y+=padding;
+  }
+  ctx.font=detailFont;
+  for(const extraLine of extra){y+=lineHeight;drawLine(ctx,extraLine,leftX,rightX,y);}
+  if(extra.length)y+=padding;
+  if(adviceLines.length){
+   y+=lineHeight;ctx.font='bold '+fontSize+'px Arial';ctx.fillText('Advice / Instructions:',leftX,y);
+   ctx.font=fontSize+'px Arial';
+   for(const line of adviceLines){y+=lineHeight;drawLine(ctx,line,leftX+12,rightX,y);}
+  }
+  return;
+ }
+ throw new Error('Too much prescription text for one A4 sheet. Please shorten medicine directions or advice.');
+}
+
 
 export async function prescriptionFile(r:Prescription, mode:'digital'|'preprinted'='digital'){
  const preprinted=mode==='preprinted';
  await Promise.all([document.fonts.load('23px "Noto Naskh Arabic"'),document.fonts.load('27px "Noto Naskh Arabic"')]);await document.fonts.ready;const canvas=document.createElement('canvas');canvas.width=1240;canvas.height=1754;const ctx=canvas.getContext('2d');if(!ctx)throw new Error('This browser cannot create a prescription PDF');
  const qrImage=async(value:string)=>{const image=new Image();image.src=await QRCode.toDataURL(value,{margin:1,width:120,color:{dark:'#222222',light:'#ffffff'}});await image.decode();return image};
  const [facebookQr,instagramQr]=preprinted?[null,null]:await Promise.all([qrImage('https://www.facebook.com/skinuvia'),qrImage('https://www.instagram.com/skinuvia')]);
- ctx.font='23px "Noto Naskh Arabic", Arial';const left=lines(ctx,['Clinical notes',r.diagnosis||''].join('\n\n'),190),right=lines(ctx,['Rx',r.medicines||'',r.instructions?'Advice / instructions\n'+r.instructions:''].join('\n\n'),770);const perPage=36,medicineLines=preprinted?printMedicineLines(r):lines(ctx,String(r.medicines||''),770),adviceLines=lines(ctx,String(r.instructions||''),770),pages=preprinted?Math.max(1,Math.ceil(left.length/36),Math.ceil(medicineLines.length/16),Math.ceil(adviceLines.length/14)):Math.max(1,Math.ceil(left.length/perPage),Math.ceil(right.length/perPage)),images:Uint8Array[]=[];
+ ctx.font='23px "Noto Naskh Arabic", Arial';const left=lines(ctx,['Clinical notes',r.diagnosis||''].join('\n\n'),190),right=lines(ctx,['Rx',r.medicines||'',r.instructions?'Advice / instructions\n'+r.instructions:''].join('\n\n'),770);const perPage=36,medicineLines=preprinted?printMedicineLines(r):lines(ctx,String(r.medicines||''),770),adviceLines=lines(ctx,String(r.instructions||''),770),pages=preprinted?1:Math.max(1,Math.ceil(left.length/perPage),Math.ceil(right.length/perPage)),images:Uint8Array[]=[];
  if(pages>8)throw new Error('Prescription is too long. Shorten the notes before exporting.');
  for(let page=0;page<pages;page++){
   ctx.fillStyle='#fff';ctx.fillRect(0,0,1240,1754);if(!preprinted){ctx.fillStyle='#242424';ctx.font='bold 49px Georgia';ctx.fillText(clinicProfile.doctor,95,100);ctx.font='bold 24px Georgia';ctx.fillText(clinicProfile.qualifications,125,138);ctx.font='bold 24px Georgia';ctx.fillText(clinicProfile.designation,95,172);
   ctx.save();ctx.direction='rtl';ctx.textAlign='right';ctx.font='bold 51px "Noto Naskh Arabic", serif';ctx.fillText(clinicProfile.urduName,1150,105);ctx.font='21px "Noto Naskh Arabic", serif';ctx.fillText(clinicProfile.urduQualifications,1150,140);ctx.fillText(clinicProfile.urduDesignation,1150,171);ctx.restore();}
   const rawDate=String(r.prescription_date||''),displayDate=/^\d{4}-\d{2}-\d{2}$/.test(rawDate)?rawDate.split('-').reverse().join('/'):rawDate;
   if(preprinted){ctx.font='bold 26px Arial';ctx.fillStyle='#242424';ctx.fillText(String(r.patient_name||''),190,268);ctx.fillText(String(r.patient_age||''),845,268);ctx.fillText(displayDate,1040,268);}else{ctx.font='23px Georgia';ctx.fillText('Name: '+String(r.patient_name||''),95,238);ctx.fillText('MR No: '+String(r.patient_number||'—'),625,238);ctx.fillText('Age: '+String(r.patient_age||'—'),825,238);ctx.fillText('Date: '+displayDate,965,238);ctx.strokeStyle='#555';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(95,255);ctx.lineTo(1150,255);ctx.moveTo(320,255);ctx.lineTo(320,1585);ctx.stroke();}
-  if(preprinted){ctx.fillStyle='#242424';ctx.font='27px Arial';for(let i=0;i<36;i++){const note=left[page*36+i];if(note&&!(page===0&&i===0))drawLine(ctx,note,105,295,330+i*35);}for(let i=0;i<16;i++){const med=medicineLines[page*16+i];if(med){ctx.font=/[\\u0600-\\u06ff]/.test(med)?'28px "Noto Naskh Arabic", Arial':'27px Arial';drawLine(ctx,med,345,1120,370+i*35);}}for(let i=0;i<14;i++){const advice=adviceLines[page*14+i];if(advice)drawLine(ctx,advice,345,1120,965+i*39);}}else{butterfly(ctx,750,970,1.5,.12);ctx.fillStyle='#153b57';ctx.font='23px Arial';const start=page*perPage;for(let i=0;i<perPage;i++){if(left[start+i])drawLine(ctx,left[start+i],105,295,303+i*34);if(right[start+i])drawLine(ctx,right[start+i],345,1120,303+i*34);}}
+  if(preprinted){ctx.fillStyle='#242424';ctx.font='25px Arial';for(let i=0;i<34;i++){const note=left[i];if(note&&i!==0)drawLine(ctx,note,105,295,330+i*35);}drawPreprintedMedicines(ctx,r);}else{butterfly(ctx,750,970,1.5,.12);ctx.fillStyle='#153b57';ctx.font='23px Arial';const start=page*perPage;for(let i=0;i<perPage;i++){if(left[start+i])drawLine(ctx,left[start+i],105,295,303+i*34);if(right[start+i])drawLine(ctx,right[start+i],345,1120,303+i*34);}}
   if(page===0){ctx.strokeStyle='#153b57';ctx.lineWidth=2.6;ctx.lineCap='round';ctx.lineJoin='round';for(const stroke of parseStrokes(r.handwriting)){ctx.beginPath();stroke.points.forEach((p,i)=>{const x=95+p.x*1055,y=270+p.y*1300;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke();if(stroke.points.length===1){const p=stroke.points[0];ctx.beginPath();ctx.arc(95+p.x*1055,270+p.y*1300,1.3,0,Math.PI*2);ctx.fill();}}}
   if(!preprinted){ctx.strokeStyle='#555';ctx.beginPath();ctx.moveTo(95,1595);ctx.lineTo(1150,1595);ctx.stroke();butterfly(ctx,120,1650,.23);ctx.fillStyle='#00a9d6';ctx.font='bold 40px Arial';ctx.fillText('SKINUVIA',165,1645);ctx.fillStyle='#222';ctx.font='bold 19px Arial';ctx.fillText('THE SKIN CLINIC',168,1673);if(facebookQr&&instagramQr){ctx.drawImage(facebookQr,325,1610,72,72);ctx.drawImage(instagramQr,410,1610,72,72);}ctx.font='11px Arial';ctx.fillText('Facebook',330,1697);ctx.fillText('Instagram',412,1697);ctx.textAlign='right';ctx.font='bold 19px Georgia';ctx.fillText(`For Appointment Call: ${clinicProfile.phone} · Ph: ${clinicProfile.landline}`,1150,1627);ctx.fillText('Timing: '+clinicProfile.hours,1150,1660);ctx.fillText(clinicProfile.address,1150,1693);ctx.textAlign='left';ctx.font='15px Arial';ctx.fillText('Not valid for any court of law',515,1720);ctx.fillText(`${String(r.number||'Prescription')}${r.patient_number?' · '+String(r.patient_number):''} · v${Number(r.version||1)} · ${page+1}/${pages}`,95,1720);}
   if(!preprinted&&r.status!=='Approved'){ctx.save();ctx.translate(670,800);ctx.rotate(-.35);ctx.globalAlpha=.14;ctx.font='bold 95px Arial';ctx.fillText(String(r.status||'Draft').toUpperCase(),-240,0);ctx.restore();}
