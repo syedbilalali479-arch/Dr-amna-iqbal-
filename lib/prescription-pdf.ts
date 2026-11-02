@@ -39,21 +39,21 @@ function drawPreprintedMedicines(ctx:CanvasRenderingContext2D,r:Prescription){
  const legacy=meds.length?[]:linesFromLegacy(String(r.medicines||'')).filter(Boolean);
  const startY=340, bottomY=1515, leftX=345, rightX=1120, available=bottomY-startY;
  // Measure actual wrapped text at each candidate font size. Never clip or spill onto another page.
- for(const fontSize of [27,25,23,21,19,17,15]){
+ for(const fontSize of [35,32,29,27,25,23,21,19]){
   const nameFont='bold '+fontSize+'px Arial';
   const detailFont=fontSize+'px "Noto Naskh Arabic", Arial';
-  const lineHeight=Math.ceil(fontSize*1.45);
-  const padding=Math.ceil(fontSize*.45);
+  const lineHeight=Math.ceil(fontSize*1.75);
+  const padding=Math.ceil(fontSize*.85);
   const blocks:{name:string[];details:string[];directions:string[]}[]=[];
   let total=0;
   for(const m of meds){
    ctx.font=nameFont;
    const name=lines(ctx,(blocks.length+1)+'. '+m.name+(m.strength?' ('+urduStrength(m.strength)+')':''),rightX-leftX-12);
    ctx.font=detailFont;
-   const details=[m.frequency&&urduChoice(m.frequency),m.dose&&urduChoice(m.dose),m.duration&&urduChoice(m.duration)].filter(Boolean) as string[];
+   const details=[m.frequency?urduChoice(m.frequency):'',m.dose?urduChoice(m.dose):'',m.duration?urduChoice(m.duration):''];
    const directions=m.instructions?lines(ctx,urduChoice(m.instructions),rightX-leftX-12):[];
    blocks.push({name,details,directions});
-   total+=(name.length+Math.max(details.length?1:0,0)+directions.length)*lineHeight+padding*2;
+   total+=(name.length+(details.some(Boolean)?1:0)+directions.length)*lineHeight+padding*2;
   }
   ctx.font=detailFont;
   const extra=notes?lines(ctx,asciiDigits(notes),rightX-leftX-12):legacy.flatMap(t=>lines(ctx,asciiDigits(t),rightX-leftX-12));
@@ -67,14 +67,14 @@ function drawPreprintedMedicines(ctx:CanvasRenderingContext2D,r:Prescription){
   for(const [blockIndex,block] of blocks.entries()){
    ctx.font=nameFont;
    for(const nameLine of block.name){y+=lineHeight;drawLine(ctx,nameLine,leftX,rightX,y);}
-   if(block.details.length){
+   if(block.details.some(Boolean)){
     y+=lineHeight;ctx.font=detailFont;
     // Three evenly spaced Urdu values: frequency, dose, duration, without headings.
-    const xs=[leftX+155,leftX+455,rightX-90];
+    const xs=[leftX+135,leftX+390,rightX-100];
     for(let i=0;i<block.details.length;i++){
-     const detail=block.details[i];const column=i===0?0:i===1?1:2;
+     const detail=block.details[i];if(!detail)continue;const column=i;
      ctx.save();ctx.direction=/[\u0600-\u06ff]/.test(detail)?'rtl':'ltr';ctx.textAlign='center';
-     ctx.fillText(detail,xs[column],y, column===0?245:column===1?245:175);ctx.restore();
+     ctx.fillText(detail,xs[column],y, column===0?240:column===1?245:185);ctx.restore();
     }
    }
    ctx.font=detailFont;
@@ -82,7 +82,7 @@ function drawPreprintedMedicines(ctx:CanvasRenderingContext2D,r:Prescription){
    y+=padding;
    // Separate medicines on both preprinted and digital PDFs, but do not
    // draw an extra divider after the final medicine.
-   if(blockIndex<blocks.length-1){ctx.beginPath();ctx.moveTo(leftX,y);ctx.lineTo(rightX,y);ctx.stroke();}
+   if(blockIndex<blocks.length-1){ctx.save();ctx.strokeStyle='#555555';ctx.lineWidth=2.4;ctx.beginPath();ctx.moveTo(leftX,y);ctx.lineTo(rightX,y);ctx.stroke();ctx.restore();}
    y+=padding;
   }
   ctx.font=detailFont;
