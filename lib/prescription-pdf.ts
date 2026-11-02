@@ -14,9 +14,20 @@ function urduAmount(value:string){let v=value.trim();v=v.replace(/\b(tsp|ts|teas
 function urduFrequency(value:string){const v=value.trim().toLowerCase().replace(/[-_]/g,' ').replace(/\s+/g,' ');const map:Record<string,string>={'once daily':'روزانہ ایک بار','twice daily':'روزانہ دو بار','thrice daily':'روزانہ تین بار','three times daily':'روزانہ تین بار','four times daily':'روزانہ چار بار','daily':'روزانہ','once a day':'روزانہ ایک بار','twice a day':'روزانہ دو بار','morning':'صبح','night':'رات کو','at night':'رات کو','morning and night':'صبح اور رات','every other day':'ایک دن چھوڑ کر','weekly':'ہفتے میں ایک بار','once weekly':'ہفتے میں ایک بار','twice weekly':'ہفتے میں دو بار','as needed':'ضرورت کے مطابق','after meals':'کھانے کے بعد','before meals':'کھانے سے پہلے'};return map[v]||value;}
 function urduDuration(value:string){return urduAmount(value).replace(/\b(months?)\b/gi,'ماہ').replace(/\b(years?)\b/gi,'سال').replace(/\b(weeks?)\b/gi,'ہفتے').replace(/\b(days?)\b/gi,'دن').replace(/\b(hours?)\b/gi,'گھنٹے');}
 function urduDirections(value:string){const v=value.trim().toLowerCase();const map:Record<string,string>={'apply on wet hairs':'گیلے بالوں پر استعمال کریں','apply on wet hair':'گیلے بالوں پر استعمال کریں','apply to affected area':'متاثرہ جگہ پر لگائیں','take after food':'کھانے کے بعد استعمال کریں','take after meals':'کھانے کے بعد استعمال کریں','take before meals':'کھانے سے پہلے استعمال کریں','use as directed':'ڈاکٹر کی ہدایت کے مطابق استعمال کریں'};return map[v]||value;}
+// Translate only recognized prescription choices. Unknown free text is preserved
+// verbatim rather than guessing medical instructions or altering numeric strength.
+const urduChoiceMap:Record<string,string>={
+ 'cream':'کریم','gel':'جیل','ointment':'مرہم','lotion':'لوشن','solution':'محلول','shampoo':'شیمپو','tablet':'گولی','capsule':'کیپسول','syrup':'شربت','drops':'قطرے','spray':'اسپرے',
+ '1 tablet':'۱ گولی','2 tablets':'۲ گولیاں','½ tablet':'آدھی گولی','1 capsule':'۱ کیپسول','2 capsules':'۲ کیپسول','5 ml':'۵ ملی لیٹر','10 ml':'۱۰ ملی لیٹر','1 teaspoon':'۱ چائے کا چمچ','2 teaspoons':'۲ چائے کے چمچ','1 tablespoon':'۱ کھانے کا چمچ','1 drop':'۱ قطرہ','2 drops':'۲ قطرے','2 sprays':'۲ اسپرے','thin layer':'باریک تہہ','pea-sized amount':'مٹر کے دانے جتنی مقدار','as prescribed':'ڈاکٹر کی ہدایت کے مطابق',
+ 'once daily':'روزانہ ایک بار','twice daily':'روزانہ دو بار','three times daily':'روزانہ تین بار','four times daily':'روزانہ چار بار','every other day':'ایک دن چھوڑ کر','once weekly':'ہفتے میں ایک بار','twice weekly':'ہفتے میں دو بار','every morning':'ہر صبح','at night':'رات کو','morning and night':'صبح اور رات','every 6 hours':'ہر ۶ گھنٹے بعد','every 8 hours':'ہر ۸ گھنٹے بعد','every 12 hours':'ہر ۱۲ گھنٹے بعد','before meals':'کھانے سے پہلے','after meals':'کھانے کے بعد','as needed':'ضرورت کے مطابق','as directed':'ڈاکٹر کی ہدایت کے مطابق',
+ '1 day':'۱ دن','3 days':'۳ دن','5 days':'۵ دن','7 days':'۷ دن','10 days':'۱۰ دن','14 days':'۱۴ دن','2 weeks':'۲ ہفتے','3 weeks':'۳ ہفتے','4 weeks':'۴ ہفتے','1 month':'۱ ماہ','2 months':'۲ ماہ','3 months':'۳ ماہ','6 months':'۶ ماہ','until review':'دوبارہ معائنے تک',
+ 'apply to affected area':'متاثرہ جگہ پر لگائیں','apply a thin layer':'باریک تہہ لگائیں','apply at night':'رات کو لگائیں','apply in the morning':'صبح لگائیں','apply on wet hair':'گیلے بالوں پر لگائیں','wash off after use':'استعمال کے بعد دھو لیں','take after meals':'کھانے کے بعد لیں','take before meals':'کھانے سے پہلے لیں','take with water':'پانی کے ساتھ لیں','avoid contact with eyes':'آنکھوں سے بچائیں','use as directed':'ڈاکٹر کی ہدایت کے مطابق استعمال کریں'
+};
+function urduChoice(value:string){return urduChoiceMap[value.trim().toLowerCase()]||value;}
+function urduStrength(value:string){return urduChoice(value);}
 function printMedicineLines(r:Prescription):string[]{
  const rows=medicineRows(r.medicine_items);if(!rows.length)return linesFromLegacy(String(r.medicines||''));
- const out:string[]=[];for(const [i,m] of rows.entries()){out.push((i+1)+'. '+m.name+(m.strength?' ('+m.strength+')':''));if(m.frequency)out.push(urduFrequency(m.frequency));if(m.dose)out.push(urduAmount(m.dose));if(m.duration)out.push(urduDuration(m.duration));if(m.instructions)out.push(urduDirections(m.instructions));out.push('');}
+ const out:string[]=[];for(const [i,m] of rows.entries()){out.push((i+1)+'. '+m.name+(m.strength?' ('+urduStrength(m.strength)+')':''));if(m.frequency)out.push(urduChoice(m.frequency));if(m.dose)out.push(urduChoice(m.dose));if(m.duration)out.push(urduChoice(m.duration));if(m.instructions)out.push(urduChoice(m.instructions));out.push('');}
  const notes=String(r.medicine_notes||'').trim();if(notes)out.push(...notes.split('\n'));return out;
 }
 function linesFromLegacy(text:string){return text.split('\n');}
@@ -36,10 +47,10 @@ function drawPreprintedMedicines(ctx:CanvasRenderingContext2D,r:Prescription){
   let total=0;
   for(const m of meds){
    ctx.font=nameFont;
-   const name=lines(ctx,(blocks.length+1)+'. '+m.name+(m.strength?' ('+m.strength+')':''),rightX-leftX-12);
+   const name=lines(ctx,(blocks.length+1)+'. '+m.name+(m.strength?' ('+urduStrength(m.strength)+')':''),rightX-leftX-12);
    ctx.font=detailFont;
-   const details=[m.frequency&&urduFrequency(m.frequency),m.dose&&urduAmount(m.dose),m.duration&&urduDuration(m.duration)].filter(Boolean) as string[];
-   const directions=m.instructions?lines(ctx,urduDirections(m.instructions),rightX-leftX-12):[];
+   const details=[m.frequency&&urduChoice(m.frequency),m.dose&&urduChoice(m.dose),m.duration&&urduChoice(m.duration)].filter(Boolean) as string[];
+   const directions=m.instructions?lines(ctx,urduChoice(m.instructions),rightX-leftX-12):[];
    blocks.push({name,details,directions});
    total+=(name.length+Math.max(details.length?1:0,0)+directions.length)*lineHeight+padding*2;
   }
