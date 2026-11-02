@@ -64,7 +64,7 @@ function drawPreprintedMedicines(ctx:CanvasRenderingContext2D,r:Prescription){
   if(total>available)continue;
   let y=startY;
   ctx.fillStyle='#242424';ctx.strokeStyle='#a5a5a5';ctx.lineWidth=1;
-  for(const block of blocks){
+  for(const [blockIndex,block] of blocks.entries()){
    ctx.font=nameFont;
    for(const nameLine of block.name){y+=lineHeight;drawLine(ctx,nameLine,leftX,rightX,y);}
    if(block.details.length){
@@ -79,7 +79,11 @@ function drawPreprintedMedicines(ctx:CanvasRenderingContext2D,r:Prescription){
    }
    ctx.font=detailFont;
    for(const direction of block.directions){y+=lineHeight;drawLine(ctx,direction,leftX+20,rightX,y);}
-   y+=padding;ctx.beginPath();ctx.moveTo(leftX,y);ctx.lineTo(rightX,y);ctx.stroke();y+=padding;
+   y+=padding;
+   // Separate medicines on both preprinted and digital PDFs, but do not
+   // draw an extra divider after the final medicine.
+   if(blockIndex<blocks.length-1){ctx.beginPath();ctx.moveTo(leftX,y);ctx.lineTo(rightX,y);ctx.stroke();}
+   y+=padding;
   }
   ctx.font=detailFont;
   for(const extraLine of extra){y+=lineHeight;drawLine(ctx,extraLine,leftX,rightX,y);}
