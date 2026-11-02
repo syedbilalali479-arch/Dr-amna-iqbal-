@@ -2,11 +2,11 @@
 import {Plus,Trash2} from 'lucide-react';
 import {ChoiceInput} from '../components/choice-input';
 import {blankMedicine,type MedicineRow} from '../lib/prescription-medicines';
-const strengthOptions=['25 mg','50 mg','100 mg','200 mg','250 mg','500 mg','1 g','5 mg/mL','10 mg/mL','Cream','Gel','Ointment','Lotion','Solution','Shampoo','Tablet','Capsule','Syrup','Drops','Spray'];
-const doseOptions=['1 tablet','2 tablets','½ tablet','1 capsule','2 capsules','5 mL','10 mL','1 teaspoon','2 teaspoons','1 tablespoon','1 drop','2 drops','2 sprays','Thin layer','Pea-sized amount','Apply to affected area','As prescribed'];
-const frequencyOptions=['Once daily','Twice daily','Three times daily','Four times daily','Every other day','Once weekly','Twice weekly','Every morning','At night','Morning and night','Every 6 hours','Every 8 hours','Every 12 hours','Before meals','After meals','As needed','As directed'];
-const durationOptions=['1 day','3 days','5 days','7 days','10 days','14 days','2 weeks','3 weeks','4 weeks','1 month','2 months','3 months','6 months','Until review','As directed'];
-const directionOptions=['Apply to affected area','Apply a thin layer','Apply at night','Apply in the morning','Apply on wet hair','Wash off after use','Take after meals','Take before meals','Take with water','Avoid contact with eyes','Use as directed'];
+const strengthOptions=['25 mg','50 mg','100 mg','200 mg','250 mg','500 mg','1 g','5 mg/mL','10 mg/mL','کریم','جیل','مرہم','لوشن','محلول','شیمپو','گولی','کیپسول','شربت','قطرے','اسپرے'];
+const doseOptions=['۱ گولی','۲ گولیاں','آدھی گولی','۱ کیپسول','۲ کیپسول','۵ ملی لیٹر','۱۰ ملی لیٹر','۱ چائے کا چمچ','۲ چائے کے چمچ','۱ کھانے کا چمچ','۱ قطرہ','۲ قطرے','۲ اسپرے','باریک تہہ','مٹر کے دانے جتنی مقدار','متاثرہ جگہ پر لگائیں','ڈاکٹر کی ہدایت کے مطابق'];
+const frequencyOptions=['روزانہ ایک بار','روزانہ دو بار','روزانہ تین بار','روزانہ چار بار','ایک دن چھوڑ کر','ہفتے میں ایک بار','ہفتے میں دو بار','ہر صبح','رات کو','صبح اور رات','ہر ۶ گھنٹے بعد','ہر ۸ گھنٹے بعد','ہر ۱۲ گھنٹے بعد','کھانے سے پہلے','کھانے کے بعد','ضرورت کے مطابق','ڈاکٹر کی ہدایت کے مطابق'];
+const durationOptions=['۱ دن','۳ دن','۵ دن','۷ دن','۱۰ دن','۱۴ دن','۲ ہفتے','۳ ہفتے','۴ ہفتے','۱ ماہ','۲ ماہ','۳ ماہ','۶ ماہ','دوبارہ معائنے تک','ڈاکٹر کی ہدایت کے مطابق'];
+const directionOptions=['متاثرہ جگہ پر لگائیں','باریک تہہ لگائیں','رات کو لگائیں','صبح لگائیں','گیلے بالوں پر لگائیں','استعمال کے بعد دھو لیں','کھانے کے بعد لیں','کھانے سے پہلے لیں','پانی کے ساتھ لیں','آنکھوں سے بچائیں','ڈاکٹر کی ہدایت کے مطابق استعمال کریں'];
 export function PrescriptionMedicineRows({rows,onChange,medicines}:{rows:MedicineRow[];onChange:(rows:MedicineRow[])=>void;medicines:Record<string,unknown>[]}){
  const catalogue=[...new Map(medicines.map(m=>[`${m.name}${m.generic_name?' · '+m.generic_name:''}`,m])).entries()];
  const update=(index:number,patch:Partial<MedicineRow>)=>onChange(rows.map((r,i)=>i===index?{...r,...patch}:r));
