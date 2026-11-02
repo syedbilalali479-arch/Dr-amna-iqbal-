@@ -110,15 +110,15 @@ export async function renderPreprintedPrescriptionImages(r:Prescription){
  const images:Uint8Array[]=[];
  for(const page of pages){
   const canvas=document.createElement('canvas');canvas.width=PREPRINTED_PAGE.width;canvas.height=PREPRINTED_PAGE.height;const ctx=canvas.getContext('2d');if(!ctx)throw new Error('This browser cannot create a prescription PDF');
-  ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#171717';ctx.font='23px Georgia, serif';
-  ctx.fillText('Name: '+englishDisplayDigits(r.patient_name||''),95,238);ctx.fillText('MR No: '+englishDisplayDigits(r.patient_number||'\u2014'),625,238);ctx.fillText('Age: '+englishDisplayDigits(r.patient_age||'\u2014'),825,238);ctx.fillText('Date: '+englishDisplayDigits(printableDate(r.prescription_date)),965,238);
-  ctx.strokeStyle='#333';ctx.lineWidth=1.4;ctx.beginPath();ctx.moveTo(95,255);ctx.lineTo(1150,255);ctx.stroke();
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#242424';ctx.font='bold 26px Arial';
+  ctx.fillText(englishDisplayDigits(r.patient_name||''),190,268);ctx.fillText(englishDisplayDigits(r.patient_age||''),845,268);ctx.fillText(englishDisplayDigits(printableDate(r.prescription_date)),1040,268);
+  ctx.font='25px "Noto Naskh Arabic", Arial';const clinicalLines=lines(ctx,String(r.diagnosis||''),190);for(let index=0;index<Math.min(34,clinicalLines.length);index++)drawLine(ctx,clinicalLines[index],105,295,365+index*35);
   for(const block of page.blocks){
-   let titleY=block.y+39;ctx.fillStyle='#111';ctx.font='bold 34px "Noto Naskh Arabic", Arial';for(const title of block.titleLines){drawLine(ctx,title,105,1140,titleY);titleY+=46}
+   let titleY=block.y+39;ctx.fillStyle='#111';ctx.font='bold 34px "Noto Naskh Arabic", Arial';for(const title of block.titleLines){drawLine(ctx,title,PREPRINTED_PAGE.left,PREPRINTED_PAGE.right,titleY);titleY+=46}
    const tableTop=block.y+34+block.titleLines.length*46,tableBottom=block.y+block.height-20;
-   ctx.fillStyle='#eef1ef';ctx.fillRect(105,tableTop,1035,38);ctx.strokeStyle='#555';ctx.lineWidth=1.35;ctx.strokeRect(105,tableTop,1035,tableBottom-tableTop);
-   ctx.font='bold 18px Arial';ctx.fillStyle='#222';ctx.textAlign='center';for(const column of PREPRINTED_COLUMNS){ctx.fillText(column.label,column.x+column.width/2,tableTop+26);if(column.x>105){ctx.beginPath();ctx.moveTo(column.x,tableTop);ctx.lineTo(column.x,tableBottom);ctx.stroke()}}
-   ctx.beginPath();ctx.moveTo(105,tableTop+38);ctx.lineTo(1140,tableTop+38);ctx.stroke();
+   const tableWidth=PREPRINTED_PAGE.right-PREPRINTED_PAGE.left;ctx.fillStyle='#eef1ef';ctx.fillRect(PREPRINTED_PAGE.left,tableTop,tableWidth,38);ctx.strokeStyle='#555';ctx.lineWidth=1.35;ctx.strokeRect(PREPRINTED_PAGE.left,tableTop,tableWidth,tableBottom-tableTop);
+   ctx.font='bold 18px Arial';ctx.fillStyle='#222';ctx.textAlign='center';for(const column of PREPRINTED_COLUMNS){ctx.fillText(column.label,column.x+column.width/2,tableTop+26);if(column.x>PREPRINTED_PAGE.left){ctx.beginPath();ctx.moveTo(column.x,tableTop);ctx.lineTo(column.x,tableBottom);ctx.stroke()}}
+   ctx.beginPath();ctx.moveTo(PREPRINTED_PAGE.left,tableTop+38);ctx.lineTo(PREPRINTED_PAGE.right,tableTop+38);ctx.stroke();
    ctx.font='29px "Noto Naskh Arabic", Arial';ctx.fillStyle='#111';for(const column of PREPRINTED_COLUMNS){block.cells[column.key].forEach((line,index)=>{const baseline=tableTop+73+index*46,rtl=/[\u0600-\u06ff]/.test(line);ctx.save();ctx.direction=rtl?'rtl':'ltr';ctx.textAlign=rtl?'right':'left';ctx.fillText(line,rtl?column.x+column.width-12:column.x+12,baseline);ctx.restore()})}
    if(block.separatorAfter&&block.separatorY){ctx.strokeStyle='#252525';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(PREPRINTED_PAGE.left,block.separatorY);ctx.lineTo(PREPRINTED_PAGE.right,block.separatorY);ctx.stroke()}
   }

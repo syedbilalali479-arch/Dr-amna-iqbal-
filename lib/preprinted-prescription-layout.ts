@@ -1,11 +1,11 @@
 import type {MedicineRow} from './prescription-medicines';
 
-export const PREPRINTED_PAGE={width:1240,height:1754,left:95,right:1150,top:310,bottom:1585} as const;
+export const PREPRINTED_PAGE={width:1240,height:1754,left:345,right:1120,top:340,bottom:1515} as const;
 export const PREPRINTED_COLUMNS=[
- {key:'frequency',label:'Frequency',x:105,width:250},
- {key:'dose',label:'Dose',x:355,width:215},
- {key:'duration',label:'Duration',x:570,width:180},
- {key:'instructions',label:'Directions',x:750,width:390},
+ {key:'frequency',label:'Frequency',x:345,width:190},
+ {key:'dose',label:'Dose',x:535,width:165},
+ {key:'duration',label:'Duration',x:700,width:140},
+ {key:'instructions',label:'Directions',x:840,width:280},
 ] as const;
 export type PreprintedColumnKey=(typeof PREPRINTED_COLUMNS)[number]['key'];
 export type TextMeasure=(text:string,font:string)=>number;
@@ -44,7 +44,7 @@ export function planPreprintedLayout(rows:MedicineRow[],measure:TextMeasure=esti
   const allCells=Object.fromEntries(PREPRINTED_COLUMNS.map(column=>[column.key,wrapPreprintedText(row[column.key]||'—',column.width-24,CELL_FONT,measure)])) as Record<PreprintedColumnKey,string[]>;
   const totalCellLines=Math.max(1,...Object.values(allCells).map(lines=>lines.length));let offset=0,continued=false;
   while(offset<totalCellLines){
-   let titleLines=wrapPreprintedText(titleFor(row,medicineIndex,continued),PREPRINTED_PAGE.right-PREPRINTED_PAGE.left-20,TITLE_FONT,measure);
+   const titleLines=wrapPreprintedText(titleFor(row,medicineIndex,continued),PREPRINTED_PAGE.right-PREPRINTED_PAGE.left-20,TITLE_FONT,measure);
    const base=BLOCK_PADDING+titleLines.length*TITLE_LINE+TABLE_HEADER;let available=PREPRINTED_PAGE.bottom-y;
    if(available<base+CELL_LINE+20){nextPage();available=PREPRINTED_PAGE.bottom-y}
    if(base+CELL_LINE+20>available)throw new Error(`Medicine ${medicineIndex+1} name is too long for the preprinted page`);
