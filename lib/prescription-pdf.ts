@@ -1,13 +1,15 @@
 import {clinicProfile} from './clinic-profile';
 import QRCode from 'qrcode';
+import {parseMedicineRows,type MedicineRow} from './prescription-medicines';
+import {englishDisplayDigits,planPreprintedLayout,PREPRINTED_COLUMNS,PREPRINTED_PAGE} from './preprinted-prescription-layout';
 export type Stroke={points:{x:number;y:number}[]};
-export type Prescription=Record<string,unknown>&{id?:string;patient_name?:string;patient_id?:string;patient_age?:string;phone?:string;prescription_date?:string;doctor?:string;diagnosis?:string;medicines?:string;instructions?:string;handwriting?:string;status?:string;version?:number};
+export type PrescriptionPdfMode='digital'|'preprinted';
+export type Prescription=Record<string,unknown>&{id?:string;patient_name?:string;patient_id?:string;patient_age?:string;phone?:string;prescription_date?:string;doctor?:string;diagnosis?:string;medicines?:string;medicine_items?:unknown;medicine_notes?:string;instructions?:string;handwriting?:string;status?:string;version?:number};
 export const wing='M0 0 C-35 -90 -150 -135 -135 -75 C-130 -45 -100 -20 -120 0 C-80 10 -75 45 -105 65 C-130 85 -135 115 -135 140 C-65 120 -5 70 0 0 Z';
 export function parseStrokes(raw:unknown):Stroke[]{try{const s=JSON.parse(String(raw||'[]'));return Array.isArray(s)?s.filter(x=>Array.isArray(x.points)&&x.points.every((p:{x:number;y:number})=>Number.isFinite(p.x)&&Number.isFinite(p.y)&&p.x>=0&&p.x<=1&&p.y>=0&&p.y<=1)):[]}catch{return []}}
 function butterfly(ctx:CanvasRenderingContext2D,x:number,y:number,scale:number,opacity=1){ctx.save();ctx.translate(x,y);ctx.scale(scale,scale);ctx.globalAlpha=opacity;ctx.fillStyle='#00a9d6';ctx.fill(new Path2D(wing));ctx.scale(-1,1);ctx.fillStyle='#3d3c3b';ctx.fill(new Path2D(wing));ctx.restore();}
 function lines(ctx:CanvasRenderingContext2D,text:string,width:number){const out:string[]=[];for(const paragraph of text.split('\n')){let current='';for(const word of paragraph.split(/\s+/)){const candidate=current?current+' '+word:word;if(ctx.measureText(candidate).width>width&&current){out.push(current);current=word}else current=candidate;}out.push(current)}return out;}
 function drawLine(ctx:CanvasRenderingContext2D,text:string,left:number,right:number,y:number){ctx.save();const rtl=/[\u0600-\u06ff]/.test(text);ctx.direction=rtl?'rtl':'ltr';ctx.textAlign=rtl?'right':'left';ctx.fillText(text,rtl?right:left,y);ctx.restore();}
-
 type PrintMedicine={name:string;strength:string;dose:string;frequency:string;duration:string;instructions:string};
 function medicineRows(value:unknown):PrintMedicine[]{try{const data=typeof value==='string'?JSON.parse(value):value;return Array.isArray(data)?data.filter((m:PrintMedicine)=>m&&m.name?.trim()):[]}catch{return []}}
 function urduAmount(value:string){let v=value.trim();v=v.replace(/\b(tsp|ts|teaspoons?|tea spoons?)\b/gi,'چائے کا چمچ').replace(/\b(tbsp|tablespoons?)\b/gi,'کھانے کا چمچ').replace(/\b(tablets?|tabs?)\b/gi,'گولی').replace(/\b(capsules?|caps?)\b/gi,'کیپسول').replace(/\b(drops?)\b/gi,'قطرے').replace(/\b(ml)\b/gi,'ملی لیٹر');return v.replace(/\b\d+\b/g,n=>n.replace(/[0-9]/g,d=>'۰۱۲۳۴۵۶۷۸۹'[Number(d)]));}
@@ -99,9 +101,35 @@ function drawPreprintedMedicines(ctx:CanvasRenderingContext2D,r:Prescription){
 }
 
 
-export async function prescriptionFile(r:Prescription, mode:'digital'|'preprinted'='digital'){
- const preprinted=mode==='preprinted';
- await Promise.all([document.fonts.load('23px "Noto Naskh Arabic"'),document.fonts.load('27px "Noto Naskh Arabic"')]);await document.fonts.ready;const canvas=document.createElement('canvas');canvas.width=1240;canvas.height=1754;const ctx=canvas.getContext('2d');if(!ctx)throw new Error('This browser cannot create a prescription PDF');
+function printableDate(value:unknown){const raw=String(value||'');return /^\d{4}-\d{2}-\d{2}$/.test(raw)?raw.split('-').reverse().join('/'):raw}
+function structuredRows(r:Prescription):MedicineRow[]{const rows=parseMedicineRows(r.medicine_items);if(rows.length)return rows;const legacy=String(r.medicines||'').trim();return legacy?[{name:legacy,strength:'',frequency:'',dose:'',duration:'',instructions:''}]:[]}
+export async function renderPreprintedPrescriptionImages(r:Prescription){
+ await document.fonts.load('29px "Noto Naskh Arabic"');await document.fonts.load('bold 34px "Noto Naskh Arabic"');await document.fonts.ready;
+ const measuringCanvas=document.createElement('canvas'),measuringContext=measuringCanvas.getContext('2d');if(!measuringContext)throw new Error('This browser cannot create a prescription PDF');
+ const pages=planPreprintedLayout(structuredRows(r),(text,font)=>{measuringContext.font=font;return measuringContext.measureText(text).width});if(pages.length>12)throw new Error('Prescription is too long. Reduce the medicine directions before exporting.');
+ const images:Uint8Array[]=[];
+ for(const page of pages){
+  const canvas=document.createElement('canvas');canvas.width=PREPRINTED_PAGE.width;canvas.height=PREPRINTED_PAGE.height;const ctx=canvas.getContext('2d');if(!ctx)throw new Error('This browser cannot create a prescription PDF');
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#171717';ctx.font='23px Georgia, serif';
+  ctx.fillText('Name: '+englishDisplayDigits(r.patient_name||''),95,238);ctx.fillText('MR No: '+englishDisplayDigits(r.patient_number||'\u2014'),625,238);ctx.fillText('Age: '+englishDisplayDigits(r.patient_age||'\u2014'),825,238);ctx.fillText('Date: '+englishDisplayDigits(printableDate(r.prescription_date)),965,238);
+  ctx.strokeStyle='#333';ctx.lineWidth=1.4;ctx.beginPath();ctx.moveTo(95,255);ctx.lineTo(1150,255);ctx.stroke();
+  for(const block of page.blocks){
+   let titleY=block.y+39;ctx.fillStyle='#111';ctx.font='bold 34px "Noto Naskh Arabic", Arial';for(const title of block.titleLines){drawLine(ctx,title,105,1140,titleY);titleY+=46}
+   const tableTop=block.y+34+block.titleLines.length*46,tableBottom=block.y+block.height-20;
+   ctx.fillStyle='#eef1ef';ctx.fillRect(105,tableTop,1035,38);ctx.strokeStyle='#555';ctx.lineWidth=1.35;ctx.strokeRect(105,tableTop,1035,tableBottom-tableTop);
+   ctx.font='bold 18px Arial';ctx.fillStyle='#222';ctx.textAlign='center';for(const column of PREPRINTED_COLUMNS){ctx.fillText(column.label,column.x+column.width/2,tableTop+26);if(column.x>105){ctx.beginPath();ctx.moveTo(column.x,tableTop);ctx.lineTo(column.x,tableBottom);ctx.stroke()}}
+   ctx.beginPath();ctx.moveTo(105,tableTop+38);ctx.lineTo(1140,tableTop+38);ctx.stroke();
+   ctx.font='29px "Noto Naskh Arabic", Arial';ctx.fillStyle='#111';for(const column of PREPRINTED_COLUMNS){block.cells[column.key].forEach((line,index)=>{const baseline=tableTop+73+index*46,rtl=/[\u0600-\u06ff]/.test(line);ctx.save();ctx.direction=rtl?'rtl':'ltr';ctx.textAlign=rtl?'right':'left';ctx.fillText(line,rtl?column.x+column.width-12:column.x+12,baseline);ctx.restore()})}
+   if(block.separatorAfter&&block.separatorY){ctx.strokeStyle='#252525';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(PREPRINTED_PAGE.left,block.separatorY);ctx.lineTo(PREPRINTED_PAGE.right,block.separatorY);ctx.stroke()}
+  }
+  const binary=atob(canvas.toDataURL('image/jpeg',.98).split(',')[1]);images.push(Uint8Array.from(binary,c=>c.charCodeAt(0)));
+ }
+ return images;
+}
+async function preprintedPrescriptionFile(r:Prescription){const images=await renderPreprintedPrescriptionImages(r),pdf=jpegPagesPdf(images,PREPRINTED_PAGE.width,PREPRINTED_PAGE.height);return new File([pdf.buffer as ArrayBuffer],`Skinuvia-preprinted-${String(r.number||'prescription').replace(/[^\w-]/g,'')}.pdf`,{type:'application/pdf'});}
+export async function prescriptionFile(r:Prescription,mode:PrescriptionPdfMode='digital'){
+ if(mode==='preprinted')return preprintedPrescriptionFile(r);
+ const preprinted=false;await Promise.all([document.fonts.load('23px "Noto Naskh Arabic"'),document.fonts.load('27px "Noto Naskh Arabic"')]);await document.fonts.ready;const canvas=document.createElement('canvas');canvas.width=1240;canvas.height=1754;const ctx=canvas.getContext('2d');if(!ctx)throw new Error('This browser cannot create a prescription PDF');
  const qrImage=async(value:string)=>{const image=new Image();image.src=await QRCode.toDataURL(value,{margin:1,width:120,color:{dark:'#222222',light:'#ffffff'}});await image.decode();return image};
  const [facebookQr,instagramQr]=preprinted?[null,null]:await Promise.all([qrImage('https://www.facebook.com/skinuvia'),qrImage('https://www.instagram.com/skinuvia')]);
  ctx.font='23px "Noto Naskh Arabic", Arial';const left=lines(ctx,['Clinical notes',r.diagnosis||''].join('\n\n'),190),right=lines(ctx,['Rx',r.medicines||'',r.instructions?'Advice / instructions\n'+r.instructions:''].join('\n\n'),770);const perPage=36,structured=medicineRows(r.medicine_items).length>0,medicineLines=preprinted?printMedicineLines(r):lines(ctx,String(r.medicines||''),770),adviceLines=lines(ctx,String(r.instructions||''),770),pages=(preprinted||structured)?1:Math.max(1,Math.ceil(left.length/perPage),Math.ceil(right.length/perPage)),images:Uint8Array[]=[];
