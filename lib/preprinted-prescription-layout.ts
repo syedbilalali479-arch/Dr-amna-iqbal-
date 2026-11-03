@@ -36,7 +36,7 @@ export function wrapPreprintedText(value:unknown,maxWidth:number,font:string,mea
 const TITLE_FONT='bold 34px "Noto Naskh Arabic", Arial';
 const CELL_FONT='29px "Noto Naskh Arabic", Arial';
 const ADVICE_FONT='27px "Noto Naskh Arabic", Arial';
-const TITLE_LINE=46,CELL_LINE=46,DETAIL_HEADER=30,BLOCK_PADDING=28,SEPARATOR_SPACE=38,ADVICE_HEADING=44,ADVICE_LINE=40;
+const TITLE_LINE=46,CELL_LINE=46,DETAIL_GAP=12,BLOCK_PADDING=28,SEPARATOR_SPACE=38,ADVICE_HEADING=44,ADVICE_LINE=40;
 function titleFor(row:MedicineRow,index:number,continued:boolean){const full=`${index+1}. ${row.name}${row.strength?` (${row.strength})`:''}`;return continued?`${full} \u2014 continued`:full}
 
 export function planPreprintedLayout(rows:MedicineRow[],measure:TextMeasure=estimatedMeasure,advice=''):PreprintedPage[]{
@@ -46,7 +46,7 @@ export function planPreprintedLayout(rows:MedicineRow[],measure:TextMeasure=esti
   const allCells=Object.fromEntries(PREPRINTED_COLUMNS.map(column=>[column.key,wrapPreprintedText(row[column.key]||'\u2014',column.width-18,CELL_FONT,measure)])) as Record<PreprintedColumnKey,string[]>;
   const totalCellLines=Math.max(1,...Object.values(allCells).map(cellLines=>cellLines.length));let offset=0,continued=false;
   while(offset<totalCellLines){
-   const titleLines=wrapPreprintedText(titleFor(row,medicineIndex,continued),PREPRINTED_PAGE.right-PREPRINTED_PAGE.left,TITLE_FONT,measure),base=BLOCK_PADDING+titleLines.length*TITLE_LINE+DETAIL_HEADER;let available=PREPRINTED_PAGE.bottom-y;
+   const titleLines=wrapPreprintedText(titleFor(row,medicineIndex,continued),PREPRINTED_PAGE.right-PREPRINTED_PAGE.left,TITLE_FONT,measure),base=BLOCK_PADDING+titleLines.length*TITLE_LINE+DETAIL_GAP;let available=PREPRINTED_PAGE.bottom-y;
    if(available<base+CELL_LINE+20+SEPARATOR_SPACE){nextPage();available=PREPRINTED_PAGE.bottom-y}
    if(base+CELL_LINE+20+SEPARATOR_SPACE>available)throw new Error(`Medicine ${medicineIndex+1} name is too long for the preprinted page`);
    let capacity=Math.max(1,Math.floor((available-base-20-SEPARATOR_SPACE)/CELL_LINE)),take=Math.min(capacity,totalCellLines-offset),finalSegment=offset+take>=totalCellLines;

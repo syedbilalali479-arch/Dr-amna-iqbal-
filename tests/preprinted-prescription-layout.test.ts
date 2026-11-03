@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {englishDisplayDigits,planPreprintedLayout,PREPRINTED_PAGE} from '../lib/preprinted-prescription-layout.ts';
 import type {MedicineRow} from '../lib/prescription-medicines.ts';
 
@@ -28,4 +29,13 @@ test('Arabic and Eastern Arabic numerals are display-only normalized to English 
 });
 test('many medicines and multiline advice flow to additional pages without clipping',()=>{
  const rows=Array.from({length:24},(_,i)=>row(`Medicine ${i+1}`)),advice=Array.from({length:60},(_,i)=>`• Advice line ${i+1}`).join('\n'),pages=planPreprintedLayout(rows,undefined,advice);assert.ok(pages.length>1);assert.equal(separators(rows).length,rows.length);assert.equal(pages.flatMap(page=>page.advice).flatMap(block=>block.lines).length,60);for(const page of pages){for(const block of page.blocks)assert.ok(block.y+block.height<=PREPRINTED_PAGE.bottom);for(const block of page.advice)assert.ok(block.y+44+block.lines.length*40<=PREPRINTED_PAGE.bottom)}
+});
+test('preprinted renderer omits detail headings and dashboard exposes only preprinted output',()=>{
+ const pdfSource=readFileSync(new URL('../lib/prescription-pdf.ts',import.meta.url),'utf8'),workspaceSource=readFileSync(new URL('../app/prescription-workspace.tsx',import.meta.url),'utf8');
+ assert.equal(pdfSource.includes('ctx.fillText(column.label'),false);
+ assert.equal(workspaceSource.includes('Digital (with letterhead)'),false);
+ assert.equal(workspaceSource.includes('pdfMode'),false);
+ const pdfCalls=workspaceSource.match(/prescriptionFile\(/g)?.length;
+ assert.equal(pdfCalls,5);
+ assert.equal(workspaceSource.match(/'preprinted'/g)?.length,pdfCalls);
 });
