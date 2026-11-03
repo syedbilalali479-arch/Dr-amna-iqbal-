@@ -36,6 +36,8 @@ test('preprinted renderer omits detail headings and dashboard exposes only prepr
  assert.match(pdfSource,/prescriptionFile\(r:Prescription,mode:PrescriptionPdfMode='preprinted'\)\{[\s\S]*?void mode;return preprintedPrescriptionFile\(r\)/);
  assert.equal(workspaceSource.includes('Digital (with letterhead)'),false);
  assert.equal(workspaceSource.includes('pdfMode'),false);
+ assert.equal(workspaceSource.includes("patient_age:String(p.age||'')"),false);
+ assert.match(workspaceSource,/patient_age:String\(p\.age\?\?''\)\.trim\(\)\?String\(p\.age\):String\(old\.patient_age\|\|''\)/);
  const pdfCalls=workspaceSource.match(/prescriptionFile\(/g)?.length;
  assert.equal(pdfCalls,5);
  assert.equal(workspaceSource.match(/'preprinted'/g)?.length,pdfCalls);
