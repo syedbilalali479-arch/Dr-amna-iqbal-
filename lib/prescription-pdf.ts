@@ -125,8 +125,12 @@ export async function renderPreprintedPrescriptionImages(r:Prescription){
  return images;
 }
 async function preprintedPrescriptionFile(r:Prescription){const images=await renderPreprintedPrescriptionImages(r),pdf=jpegPagesPdf(images,PREPRINTED_PAGE.width,PREPRINTED_PAGE.height);return new File([pdf.buffer as ArrayBuffer],`Skinuvia-preprinted-${String(r.number||'prescription').replace(/[^\w-]/g,'')}.pdf`,{type:'application/pdf'});}
-export async function prescriptionFile(r:Prescription,mode:PrescriptionPdfMode='digital'){
- if(mode==='preprinted')return preprintedPrescriptionFile(r);
+export async function prescriptionFile(r:Prescription,mode:PrescriptionPdfMode='preprinted'){
+ // Preprinted is the clinic's only supported output. Keep accepting the legacy
+ // mode argument so an older caller cannot accidentally restore letterhead,
+ // watermark or labelled clinical-note content on preprinted stationery.
+ void mode;return preprintedPrescriptionFile(r);
+ /* c8 ignore start -- retained temporarily for backward-compatible source history
  const preprinted=false;await Promise.all([document.fonts.load('23px "Noto Naskh Arabic"'),document.fonts.load('27px "Noto Naskh Arabic"')]);await document.fonts.ready;const canvas=document.createElement('canvas');canvas.width=1240;canvas.height=1754;const ctx=canvas.getContext('2d');if(!ctx)throw new Error('This browser cannot create a prescription PDF');
  const qrImage=async(value:string)=>{const image=new Image();image.src=await QRCode.toDataURL(value,{margin:1,width:120,color:{dark:'#222222',light:'#ffffff'}});await image.decode();return image};
  const [facebookQr,instagramQr]=preprinted?[null,null]:await Promise.all([qrImage('https://www.facebook.com/skinuvia'),qrImage('https://www.instagram.com/skinuvia')]);
@@ -145,6 +149,7 @@ export async function prescriptionFile(r:Prescription,mode:PrescriptionPdfMode='
   const binary=atob(canvas.toDataURL('image/jpeg',.94).split(',')[1]);images.push(Uint8Array.from(binary,c=>c.charCodeAt(0)));
  }
  const pdf=jpegPagesPdf(images,1240,1754);return new File([pdf.buffer as ArrayBuffer],`Skinuvia-${preprinted?'preprinted-':''}${String(r.number||'prescription').replace(/[^\w-]/g,'')}.pdf`,{type:'application/pdf'});
+ c8 ignore stop */
 }
 export function jpegPagesPdf(images:Uint8Array[],width:number,height:number){
  const chunks:Uint8Array[]=[],offsets=[0];let length=0;const encoder=new TextEncoder();const add=(v:string|Uint8Array)=>{const b=typeof v==='string'?encoder.encode(v):v;chunks.push(b);length+=b.length};const object=(id:number,parts:(string|Uint8Array)[])=>{offsets[id]=length;add(`${id} 0 obj\n`);parts.forEach(add);add('\nendobj\n')};
