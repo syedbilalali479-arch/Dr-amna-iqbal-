@@ -31,7 +31,7 @@ test('many medicines and multiline advice flow to additional pages without clipp
  const rows=Array.from({length:24},(_,i)=>row(`Medicine ${i+1}`)),advice=Array.from({length:60},(_,i)=>`• Advice line ${i+1}`).join('\n'),pages=planPreprintedLayout(rows,undefined,advice);assert.ok(pages.length>1);assert.equal(separators(rows).length,rows.length);assert.equal(pages.flatMap(page=>page.advice).flatMap(block=>block.lines).length,60);for(const page of pages){for(const block of page.blocks)assert.ok(block.y+block.height<=PREPRINTED_PAGE.bottom);for(const block of page.advice)assert.ok(block.y+44+block.lines.length*40<=PREPRINTED_PAGE.bottom)}
 });
 test('preprinted renderer omits detail headings and dashboard exposes only preprinted output',()=>{
- const pdfSource=readFileSync(new URL('../lib/prescription-pdf.ts',import.meta.url),'utf8'),workspaceSource=readFileSync(new URL('../app/prescription-workspace.tsx',import.meta.url),'utf8');
+ const pdfSource=readFileSync(new URL('../lib/prescription-pdf.ts',import.meta.url),'utf8'),workspaceSource=readFileSync(new URL('../app/prescription-workspace.tsx',import.meta.url),'utf8'),medicineRowsSource=readFileSync(new URL('../app/prescription-medicine-rows.tsx',import.meta.url),'utf8');
  assert.equal(pdfSource.includes('ctx.fillText(column.label'),false);
  assert.match(pdfSource,/prescriptionFile\(r:Prescription,mode:PrescriptionPdfMode='preprinted'\)\{[\s\S]*?void mode;return preprintedPrescriptionFile\(r\)/);
  assert.equal(workspaceSource.includes('Digital (with letterhead)'),false);
@@ -41,4 +41,5 @@ test('preprinted renderer omits detail headings and dashboard exposes only prepr
  const pdfCalls=workspaceSource.match(/prescriptionFile\(/g)?.length;
  assert.equal(pdfCalls,5);
  assert.equal(workspaceSource.match(/'preprinted'/g)?.length,pdfCalls);
+ for(const direction of [String.raw`\u0686\u06c1\u0631\u06d2 \u067e\u0631 \u0644\u06af\u0627\u0626\u06cc\u06ba`,String.raw`\u0633\u0631 \u067e\u0631 \u0644\u06af\u0627\u0626\u06cc\u06ba`,String.raw`\u0686\u06c1\u0631\u06d2\u060c \u06af\u0631\u062f\u0646 \u0627\u0648\u0631 \u06c1\u0627\u062a\u06be\u0648\u06ba \u067e\u0631 \u0644\u06af\u0627\u0626\u06cc\u06ba`,String.raw`\u06c1\u0627\u062a\u06be\u0648\u06ba \u0627\u0648\u0631 \u067e\u06cc\u0631\u0648\u06ba \u067e\u0631 \u0644\u06af\u0627\u0626\u06cc\u06ba`])assert.equal(medicineRowsSource.includes(direction),true);
 });
