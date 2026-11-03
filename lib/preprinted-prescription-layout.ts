@@ -37,7 +37,7 @@ const TITLE_FONT='bold 34px "Noto Naskh Arabic", Arial';
 const CELL_FONT='29px "Noto Naskh Arabic", Arial';
 const ADVICE_FONT='27px "Noto Naskh Arabic", Arial';
 const TITLE_LINE=46,CELL_LINE=46,DETAIL_GAP=12,BLOCK_PADDING=28,SEPARATOR_SPACE=38,ADVICE_HEADING=44,ADVICE_LINE=40;
-function titleFor(row:MedicineRow,index:number,continued:boolean){const full=`${index+1}. ${row.name}${row.strength?` (${row.strength})`:''}`;return continued?`${full} \u2014 continued`:full}
+function titleFor(row:MedicineRow,index:number,continued:boolean){const full=`${index+1}. ${row.name.toUpperCase()}${row.strength?` (${row.strength})`:''}`;return continued?`${full} \u2014 continued`:full}
 
 export function planPreprintedLayout(rows:MedicineRow[],measure:TextMeasure=estimatedMeasure,advice=''):PreprintedPage[]{
  const medicines=rows.filter(row=>row.name.trim()),adviceText=englishDisplayDigits(advice).trim(),pages:PreprintedPage[]=[{blocks:[],advice:[]}];let page=pages[0],y=PREPRINTED_PAGE.top;

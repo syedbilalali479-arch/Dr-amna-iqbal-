@@ -15,8 +15,9 @@ test('multiline advice follows the final separator and preserves bullets and bla
 test('empty advice does not create an empty advice section',()=>{assert.equal(planPreprintedLayout([row('Medicine A')],undefined,'  ').flatMap(page=>page.advice).length,0)});
 test('mixed English names and Urdu instructions remain in structured cells',()=>{
  const pages=planPreprintedLayout([row('Cetirizine',{frequency:'\u0635\u0628\u062d \u0634\u0627\u0645',dose:'2 \u06af\u0648\u0644\u06cc\u0627\u06ba',duration:'5 \u062f\u0646',instructions:'\u0631\u0627\u062a \u06a9\u0648 \u0644\u06af\u0627\u0626\u06cc\u06ba'})]);
- const block=pages[0].blocks[0];assert.match(block.titleLines.join(' '),/Cetirizine/);assert.equal(block.cells.frequency.join(' '),'\u0635\u0628\u062d \u0634\u0627\u0645');assert.equal(block.cells.dose.join(' '),'2 \u06af\u0648\u0644\u06cc\u0627\u06ba');assert.equal(block.cells.instructions.join(' '),'\u0631\u0627\u062a \u06a9\u0648 \u0644\u06af\u0627\u0626\u06cc\u06ba');
+ const block=pages[0].blocks[0];assert.match(block.titleLines.join(' '),/CETIRIZINE/);assert.equal(block.cells.frequency.join(' '),'\u0635\u0628\u062d \u0634\u0627\u0645');assert.equal(block.cells.dose.join(' '),'2 \u06af\u0648\u0644\u06cc\u0627\u06ba');assert.equal(block.cells.instructions.join(' '),'\u0631\u0627\u062a \u06a9\u0648 \u0644\u06af\u0627\u0626\u06cc\u06ba');
 });
+test('medicine names are display-only uppercased on the preprinted prescription',()=>{const block=planPreprintedLayout([row('Skinoren serum')])[0].blocks[0];assert.match(block.titleLines.join(' '),/^1\. SKINOREN SERUM/)});
 test('long names and directions wrap or paginate without clipping',()=>{
  const long=row('A very long medicine name with extended release formulation and multiple verified clinical descriptors repeated '.repeat(4),{instructions:'Apply a thin layer to the affected area after washing and drying the skin carefully. '.repeat(28)}),pages=planPreprintedLayout([long]);
  assert.ok(pages.length>=1);assert.ok(pages.flatMap(page=>page.blocks).length>=1);for(const page of pages)for(const block of page.blocks)assert.ok(block.y+block.height<=PREPRINTED_PAGE.bottom);
