@@ -1,6 +1,11 @@
 import type {MedicineRow} from './prescription-medicines';
 
 export const PREPRINTED_PAGE={width:1240,height:1754,left:345,right:1120,top:340,bottom:1515} as const;
+export const PREPRINTED_HEADER={font:'bold 23px Arial',baseline:250,nameX:190,nameMaxWidth:520,ageCenterX:860,ageMaxWidth:70,dateRightX:1120,dateMaxWidth:150} as const;
+export const PREPRINTED_TYPOGRAPHY={
+ titleFont:'bold 30px "Noto Naskh Arabic", Arial',cellFont:'25px "Noto Naskh Arabic", Arial',adviceFont:'24px "Noto Naskh Arabic", Arial',adviceHeadingFont:'bold 25px Arial',
+ titleLine:40,cellLine:40,detailGap:8,blockPadding:20,separatorSpace:28,adviceHeading:38,adviceLine:34,
+} as const;
 export const PREPRINTED_COLUMNS=[
  {key:'frequency',label:'Frequency',x:345,width:190},
  {key:'dose',label:'Dose',x:535,width:165},
@@ -15,6 +20,7 @@ export type PreprintedPage={blocks:PreprintedMedicineBlock[];advice:PreprintedAd
 
 const digitMap:Record<string,string>={'\u0660':'0','\u0661':'1','\u0662':'2','\u0663':'3','\u0664':'4','\u0665':'5','\u0666':'6','\u0667':'7','\u0668':'8','\u0669':'9','\u06F0':'0','\u06F1':'1','\u06F2':'2','\u06F3':'3','\u06F4':'4','\u06F5':'5','\u06F6':'6','\u06F7':'7','\u06F8':'8','\u06F9':'9'};
 export function englishDisplayDigits(value:unknown){return String(value??'').replace(/[\u0660-\u0669\u06F0-\u06F9]/g,d=>digitMap[d]);}
+export function preprintedDate(value:unknown){const raw=englishDisplayDigits(value).trim();return /^\d{4}-\d{2}-\d{2}$/.test(raw)?raw.split('-').reverse().join('/'):raw}
 
 function estimatedMeasure(text:string,font:string){const size=Number(font.match(/(\d+)px/)?.[1]||24);return [...text].reduce((sum,char)=>sum+size*(/[\u0600-\u06ff]/.test(char)?.63:/[A-Z0-9]/.test(char)?.62:.5),0)}
 export function wrapPreprintedText(value:unknown,maxWidth:number,font:string,measure:TextMeasure=estimatedMeasure){
@@ -33,10 +39,8 @@ export function wrapPreprintedText(value:unknown,maxWidth:number,font:string,mea
  return result.length?result:[''];
 }
 
-const TITLE_FONT='bold 34px "Noto Naskh Arabic", Arial';
-const CELL_FONT='29px "Noto Naskh Arabic", Arial';
-const ADVICE_FONT='27px "Noto Naskh Arabic", Arial';
-const TITLE_LINE=46,CELL_LINE=46,DETAIL_GAP=12,BLOCK_PADDING=28,SEPARATOR_SPACE=38,ADVICE_HEADING=44,ADVICE_LINE=40;
+const TITLE_FONT=PREPRINTED_TYPOGRAPHY.titleFont,CELL_FONT=PREPRINTED_TYPOGRAPHY.cellFont,ADVICE_FONT=PREPRINTED_TYPOGRAPHY.adviceFont;
+const {titleLine:TITLE_LINE,cellLine:CELL_LINE,detailGap:DETAIL_GAP,blockPadding:BLOCK_PADDING,separatorSpace:SEPARATOR_SPACE,adviceHeading:ADVICE_HEADING,adviceLine:ADVICE_LINE}=PREPRINTED_TYPOGRAPHY;
 function titleFor(row:MedicineRow,index:number,continued:boolean){const full=`${index+1}. ${row.name.toUpperCase()}${row.strength?` (${row.strength})`:''}`;return continued?`${full} \u2014 continued`:full}
 
 export function planPreprintedLayout(rows:MedicineRow[],measure:TextMeasure=estimatedMeasure,advice=''):PreprintedPage[]{

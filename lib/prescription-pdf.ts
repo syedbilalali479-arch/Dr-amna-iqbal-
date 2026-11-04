@@ -1,7 +1,7 @@
 import {clinicProfile} from './clinic-profile';
 import QRCode from 'qrcode';
 import {parseMedicineRows,type MedicineRow} from './prescription-medicines';
-import {englishDisplayDigits,planPreprintedLayout,PREPRINTED_COLUMNS,PREPRINTED_PAGE} from './preprinted-prescription-layout';
+import {englishDisplayDigits,planPreprintedLayout,preprintedDate,PREPRINTED_COLUMNS,PREPRINTED_HEADER,PREPRINTED_PAGE,PREPRINTED_TYPOGRAPHY} from './preprinted-prescription-layout';
 export type Stroke={points:{x:number;y:number}[]};
 export type PrescriptionPdfMode='digital'|'preprinted';
 export type Prescription=Record<string,unknown>&{id?:string;patient_name?:string;patient_id?:string;patient_age?:string;phone?:string;prescription_date?:string;doctor?:string;diagnosis?:string;medicines?:string;medicine_items?:unknown;medicine_notes?:string;instructions?:string;handwriting?:string;status?:string;version?:number};
@@ -101,25 +101,24 @@ function drawPreprintedMedicines(ctx:CanvasRenderingContext2D,r:Prescription){
 }
 
 
-function printableDate(value:unknown){const raw=String(value||'');return /^\d{4}-\d{2}-\d{2}$/.test(raw)?raw.split('-').reverse().join('/'):raw}
 function structuredRows(r:Prescription):MedicineRow[]{const rows=parseMedicineRows(r.medicine_items);if(rows.length)return rows;const legacy=String(r.medicines||'').trim();return legacy?[{name:legacy,strength:'',frequency:'',dose:'',duration:'',instructions:''}]:[]}
 export async function renderPreprintedPrescriptionImages(r:Prescription){
- await document.fonts.load('29px "Noto Naskh Arabic"');await document.fonts.load('bold 34px "Noto Naskh Arabic"');await document.fonts.ready;
+ await document.fonts.load(PREPRINTED_TYPOGRAPHY.cellFont);await document.fonts.load(PREPRINTED_TYPOGRAPHY.titleFont);await document.fonts.ready;
  const measuringCanvas=document.createElement('canvas'),measuringContext=measuringCanvas.getContext('2d');if(!measuringContext)throw new Error('This browser cannot create a prescription PDF');
  const pages=planPreprintedLayout(structuredRows(r),(text,font)=>{measuringContext.font=font;return measuringContext.measureText(text).width},String(r.instructions||''));measuringContext.font='25px "Noto Naskh Arabic", Arial';const clinicalLines=lines(measuringContext,String(r.diagnosis||''),210),clinicalPerPage=32;while(pages.length<Math.max(1,Math.ceil(clinicalLines.length/clinicalPerPage)))pages.push({blocks:[],advice:[]});if(pages.length>12)throw new Error('Prescription is too long. Reduce the clinical notes, medicine directions or advice before exporting.');
  const images:Uint8Array[]=[];
  for(const [pageIndex,page] of pages.entries()){
   const canvas=document.createElement('canvas');canvas.width=PREPRINTED_PAGE.width;canvas.height=PREPRINTED_PAGE.height;const ctx=canvas.getContext('2d');if(!ctx)throw new Error('This browser cannot create a prescription PDF');
-  ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#242424';ctx.font='bold 26px Arial';
-  ctx.fillText(englishDisplayDigits(r.patient_name||''),190,268);ctx.fillText(englishDisplayDigits(r.patient_age||''),845,268);ctx.fillText(englishDisplayDigits(printableDate(r.prescription_date)),1040,268);
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#242424';ctx.font=PREPRINTED_HEADER.font;
+  ctx.save();ctx.textAlign='left';ctx.fillText(englishDisplayDigits(r.patient_name||''),PREPRINTED_HEADER.nameX,PREPRINTED_HEADER.baseline,PREPRINTED_HEADER.nameMaxWidth);ctx.textAlign='center';ctx.fillText(englishDisplayDigits(r.patient_age||''),PREPRINTED_HEADER.ageCenterX,PREPRINTED_HEADER.baseline,PREPRINTED_HEADER.ageMaxWidth);ctx.textAlign='right';ctx.fillText(preprintedDate(r.prescription_date),PREPRINTED_HEADER.dateRightX,PREPRINTED_HEADER.baseline,PREPRINTED_HEADER.dateMaxWidth);ctx.restore();
   ctx.font='25px "Noto Naskh Arabic", Arial';const pageClinicalLines=clinicalLines.slice(pageIndex*clinicalPerPage,(pageIndex+1)*clinicalPerPage);for(let index=0;index<pageClinicalLines.length;index++)drawLine(ctx,pageClinicalLines[index],65,275,365+index*35);
   for(const block of page.blocks){
-   let titleY=block.y+39;ctx.fillStyle='#111';ctx.font='bold 34px "Noto Naskh Arabic", Arial';for(const title of block.titleLines){drawLine(ctx,title,PREPRINTED_PAGE.left,PREPRINTED_PAGE.right,titleY);titleY+=46}
-   const detailTop=block.y+28+block.titleLines.length*46;
-   ctx.font='29px "Noto Naskh Arabic", Arial';ctx.fillStyle='#111';for(const column of PREPRINTED_COLUMNS){block.cells[column.key].forEach((line,index)=>{const baseline=detailTop+38+index*46,rtl=/[\u0600-\u06ff]/.test(line);ctx.save();ctx.direction=rtl?'rtl':'ltr';ctx.textAlign=rtl?'right':'left';ctx.fillText(line,rtl?column.x+column.width-8:column.x+4,baseline);ctx.restore()})}
+   let titleY=block.y+PREPRINTED_TYPOGRAPHY.blockPadding+PREPRINTED_TYPOGRAPHY.titleLine-26;ctx.fillStyle='#111';ctx.font=PREPRINTED_TYPOGRAPHY.titleFont;for(const title of block.titleLines){drawLine(ctx,title,PREPRINTED_PAGE.left,PREPRINTED_PAGE.right,titleY);titleY+=PREPRINTED_TYPOGRAPHY.titleLine}
+   const detailTop=block.y+PREPRINTED_TYPOGRAPHY.blockPadding+block.titleLines.length*PREPRINTED_TYPOGRAPHY.titleLine+PREPRINTED_TYPOGRAPHY.detailGap;
+   ctx.font=PREPRINTED_TYPOGRAPHY.cellFont;ctx.fillStyle='#111';for(const column of PREPRINTED_COLUMNS){block.cells[column.key].forEach((line,index)=>{const baseline=detailTop+PREPRINTED_TYPOGRAPHY.cellLine-9+index*PREPRINTED_TYPOGRAPHY.cellLine,rtl=/[\u0600-\u06ff]/.test(line);ctx.save();ctx.direction=rtl?'rtl':'ltr';ctx.textAlign=rtl?'right':'left';ctx.fillText(line,rtl?column.x+column.width-8:column.x+4,baseline);ctx.restore()})}
    if(block.separatorAfter){ctx.strokeStyle='#252525';ctx.lineWidth=block.finalSeparator?3.4:2.8;ctx.beginPath();ctx.moveTo(PREPRINTED_PAGE.left,block.separatorY);ctx.lineTo(PREPRINTED_PAGE.right,block.separatorY);ctx.stroke()}
   }
-  for(const advice of page.advice){ctx.fillStyle='#171717';ctx.font='bold 28px Arial';ctx.textAlign='left';ctx.fillText(advice.heading,PREPRINTED_PAGE.left,advice.y+30);ctx.font='27px "Noto Naskh Arabic", Arial';advice.lines.forEach((line,index)=>drawLine(ctx,line,PREPRINTED_PAGE.left,PREPRINTED_PAGE.right,advice.y+74+index*40))}
+  for(const advice of page.advice){ctx.fillStyle='#171717';ctx.font=PREPRINTED_TYPOGRAPHY.adviceHeadingFont;ctx.textAlign='left';ctx.fillText(advice.heading,PREPRINTED_PAGE.left,advice.y+PREPRINTED_TYPOGRAPHY.adviceHeading-10);ctx.font=PREPRINTED_TYPOGRAPHY.adviceFont;advice.lines.forEach((line,index)=>drawLine(ctx,line,PREPRINTED_PAGE.left,PREPRINTED_PAGE.right,advice.y+PREPRINTED_TYPOGRAPHY.adviceHeading+PREPRINTED_TYPOGRAPHY.adviceLine-8+index*PREPRINTED_TYPOGRAPHY.adviceLine))}
   const binary=atob(canvas.toDataURL('image/jpeg',.98).split(',')[1]);images.push(Uint8Array.from(binary,c=>c.charCodeAt(0)));
  }
  return images;

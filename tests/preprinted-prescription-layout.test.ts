@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {englishDisplayDigits,planPreprintedLayout,PREPRINTED_PAGE} from '../lib/preprinted-prescription-layout.ts';
+import {englishDisplayDigits,planPreprintedLayout,preprintedDate,PREPRINTED_HEADER,PREPRINTED_PAGE,PREPRINTED_TYPOGRAPHY} from '../lib/preprinted-prescription-layout.ts';
 import type {MedicineRow} from '../lib/prescription-medicines.ts';
 
 const row=(name:string,patch:Partial<MedicineRow>={}):MedicineRow=>({name,strength:'10 mg',frequency:'Twice daily',dose:'1 tablet',duration:'5 days',instructions:'After food',...patch});
@@ -28,8 +28,15 @@ test('missing frequency dose and duration display em dashes',()=>{
 test('Arabic and Eastern Arabic numerals are display-only normalized to English digits',()=>{
  assert.equal(englishDisplayDigits('\u0661 \u06af\u0648\u0644\u06cc\u060c \u06F2 \u06af\u0648\u0644\u06cc\u0627\u06ba\u060c \u0665 \u062f\u0646'),'1 \u06af\u0648\u0644\u06cc\u060c 2 \u06af\u0648\u0644\u06cc\u0627\u06ba\u060c 5 \u062f\u0646');
 });
+test('patient header uses the stationery baseline and formats an ISO date as DD/MM/YYYY',()=>{
+ assert.ok(PREPRINTED_HEADER.baseline<260);assert.equal(preprintedDate('2026-11-04'),'04/11/2026');assert.equal(preprintedDate('04/11/2026'),'04/11/2026');
+});
+test('five normal medicines and advice fit safely on one preprinted page',()=>{
+ const rows=['UVION SC GEL','ROSALITE CREAM','FATRINA GEL','SILCIO FACE WASH','GK CREAM'].map((name,index)=>row(name,{frequency:index%2?'At night':'Morning and afternoon',dose:'',duration:'',instructions:index===3?'To wash face':'Apply on face'}));
+ const pages=planPreprintedLayout(rows,undefined,'follow up: 1.5 months'),lastBlock=pages[0].blocks.at(-1),advice=pages[0].advice[0];assert.equal(pages.length,1);assert.ok(lastBlock?.finalSeparator);assert.ok(advice.y>lastBlock.separatorY);assert.ok(advice.y+PREPRINTED_TYPOGRAPHY.adviceHeading+advice.lines.length*PREPRINTED_TYPOGRAPHY.adviceLine<=PREPRINTED_PAGE.bottom);
+});
 test('many medicines and multiline advice flow to additional pages without clipping',()=>{
- const rows=Array.from({length:24},(_,i)=>row(`Medicine ${i+1}`)),advice=Array.from({length:60},(_,i)=>`• Advice line ${i+1}`).join('\n'),pages=planPreprintedLayout(rows,undefined,advice);assert.ok(pages.length>1);assert.equal(separators(rows).length,rows.length);assert.equal(pages.flatMap(page=>page.advice).flatMap(block=>block.lines).length,60);for(const page of pages){for(const block of page.blocks)assert.ok(block.y+block.height<=PREPRINTED_PAGE.bottom);for(const block of page.advice)assert.ok(block.y+44+block.lines.length*40<=PREPRINTED_PAGE.bottom)}
+ const rows=Array.from({length:24},(_,i)=>row(`Medicine ${i+1}`)),advice=Array.from({length:60},(_,i)=>`• Advice line ${i+1}`).join('\n'),pages=planPreprintedLayout(rows,undefined,advice);assert.ok(pages.length>1);assert.equal(separators(rows).length,rows.length);assert.equal(pages.flatMap(page=>page.advice).flatMap(block=>block.lines).length,60);for(const page of pages){for(const block of page.blocks)assert.ok(block.y+block.height<=PREPRINTED_PAGE.bottom);for(const block of page.advice)assert.ok(block.y+PREPRINTED_TYPOGRAPHY.adviceHeading+block.lines.length*PREPRINTED_TYPOGRAPHY.adviceLine<=PREPRINTED_PAGE.bottom)}
 });
 test('preprinted renderer omits detail headings and dashboard exposes only preprinted output',()=>{
  const pdfSource=readFileSync(new URL('../lib/prescription-pdf.ts',import.meta.url),'utf8'),workspaceSource=readFileSync(new URL('../app/prescription-workspace.tsx',import.meta.url),'utf8'),medicineRowsSource=readFileSync(new URL('../app/prescription-medicine-rows.tsx',import.meta.url),'utf8');
