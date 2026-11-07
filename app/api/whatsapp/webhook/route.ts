@@ -26,16 +26,27 @@ function textOf(m: WaMessage) {
   return (m.messageBody || m.message?.conversation || m.message?.extendedTextMessage?.text || m.message?.imageMessage?.caption || m.message?.videoMessage?.caption || "").trim();
 }
 
-// Prefer the real phone number: newer WhatsApp payloads may use a private "@lid" remoteJid.
-function phoneOf(m: WaMessage) {
+// Prefer the real phone number. Newer WhatsApp payloads often use a private "@lid" remoteJid
+// with no phone number at all; in that case we reply to the JID itself so the patient still
+// gets an answer.
+function senderOf(m: WaMessage): {phone: string; to: string} | null {
   const k = m.key || {};
-  const candidates = [k.cleanedSenderPn, k.senderPn, k.remoteJid];
-  for (const c of candidates) {
+  for (const c of [k.cleanedSenderPn, k.senderPn, k.remoteJid]) {
     if (!c || /@(g\.us|lid|broadcast|newsletter)$/.test(c)) continue;
     const digits = c.split("@")[0].split(":")[0].replace(/\D/g, "");
-    if (digits.length >= 8 && digits.length <= 15) return "+" + digits;
+    if (digits.length >= 8 && digits.length <= 15) return {phone: "+" + digits, to: "+" + digits};
   }
+  if (k.remoteJid?.endsWith("@lid")) return {phone: k.remoteJid, to: k.remoteJid};
   return null;
+}
+
+// Last few webhook hits, kept in memory for the diagnostics view (GET ?key=<webhook secret>).
+const recent: Array<Record<string, unknown>> = [];
+function remember(entry: Record<string, unknown>) {
+  const row = {at: new Date().toISOString(), ...entry};
+  recent.unshift(row);
+  recent.length = Math.min(recent.length, 20);
+  console.log("[whatsapp-webhook]", JSON.stringify(row));
 }
 
 function isGroupOrStatus(m: WaMessage) {
@@ -49,23 +60,30 @@ async function sendReply(token: string, to: string, text: string) {
   if (!response.ok || body.success === false) throw new Error(body.message || `WhatsApp send failed (${response.status})`);
 }
 
-export async function GET() {
-  return Response.json({ok: true, endpoint: "whatsapp-webhook"});
+export async function GET(request: Request) {
+  const runtime = env as RuntimeEnv;
+  const key = new URL(request.url).searchParams.get("key");
+  const base = {ok: true, endpoint: "whatsapp-webhook"};
+  if (!runtime.WHATSAPP_WEBHOOK_SECRET || key !== runtime.WHATSAPP_WEBHOOK_SECRET) return Response.json(base);
+  return Response.json({...base, config: {apiToken: Boolean(runtime.WHATSAPP_API_TOKEN), webhookSecret: true, gemini: Boolean(runtime.GEMINI_API_KEY)}, recent});
 }
 
 export async function POST(request: Request) {
   const runtime = env as RuntimeEnv;
   const secret = runtime.WHATSAPP_WEBHOOK_SECRET;
   if (secret && request.headers.get("x-webhook-signature") !== secret) {
+    remember({status: 401, reason: "webhook secret mismatch - WHATSAPP_WEBHOOK_SECRET must equal the WaSender webhook secret", signatureSent: Boolean(request.headers.get("x-webhook-signature"))});
     return Response.json({error: "Invalid webhook signature"}, {status: 401});
   }
+  if (!runtime.WHATSAPP_API_TOKEN) remember({status: 503, reason: "WHATSAPP_API_TOKEN missing in Railway variables"});
   if (!runtime.WHATSAPP_API_TOKEN) return Response.json({error: "WHATSAPP_API_TOKEN is not configured"}, {status: 503});
 
   let payload: {event?: string; data?: {messages?: WaMessage | WaMessage[]}};
   try { payload = await request.json(); } catch { return Response.json({error: "Invalid JSON"}, {status: 400}); }
 
   const event = String(payload.event || "");
-  if (event === "webhook.test") return Response.json({ok: true});
+  if (event === "webhook.test") { remember({event, status: 200}); return Response.json({ok: true}); }
+  if (!event.startsWith("messages")) remember({event, ignored: true});
   if (!event.startsWith("messages")) return Response.json({ok: true, ignored: event || "unknown"});
 
   const raw = payload.data?.messages;
@@ -76,8 +94,9 @@ export async function POST(request: Request) {
   for (const m of messages) {
     try {
       if (m.key?.fromMe || isGroupOrStatus(m)) { results.push({skipped: "outgoing/group"}); continue; }
-      const text = textOf(m), phone = phoneOf(m);
-      if (!text || !phone) { results.push({skipped: "no text or phone"}); continue; }
+      const text = textOf(m), sender = senderOf(m);
+      if (!text || !sender) { results.push({skipped: text ? "no sender" : "no text (media/sticker?)", jid: m.key?.remoteJid}); continue; }
+      const {phone, to} = sender;
 
       // WaSender can deliver the same message more than once (e.g. received + upsert, or retries).
       const messageId = m.key?.id || crypto.randomUUID();
@@ -94,13 +113,14 @@ export async function POST(request: Request) {
         geminiModel: runtime.GEMINI_MODEL,
         geminiDailyLimit: Number(runtime.GEMINI_DAILY_CALL_LIMIT || 150),
       });
-      if (result.response) await sendReply(runtime.WHATSAPP_API_TOKEN, phone, result.response);
+      if (result.response) await sendReply(runtime.WHATSAPP_API_TOKEN, to, result.response);
       results.push({replied: Boolean(result.response), intent: result.intent});
     } catch (error) {
       console.error("WhatsApp webhook error", error);
       results.push({error: error instanceof Error ? error.message : "failed"});
     }
   }
+  remember({event, results});
   // Always 200 so WaSender does not keep retrying a message we already handled.
   return Response.json({ok: true, results});
 }
