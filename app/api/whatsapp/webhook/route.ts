@@ -1,12 +1,12 @@
 import {env} from "@/lib/runtime-env";
 import {runHybrid} from "../../../../lib/ai/hybrid-orchestrator";
+import {ensureWebhook,publicWebhookUrl,sendText,sessionInfo} from "../../../../lib/wasender";
 
 // Incoming WhatsApp messages from WaSender. Set this URL as the session webhook in the
 // WaSender dashboard (https://<your-domain>/api/whatsapp/webhook) and enable the
 // "messages.received" / "messages.upsert" events. The same value as the dashboard's
 // webhook secret must be set as WHATSAPP_WEBHOOK_SECRET.
 const CLINIC = "skinuvia";
-const SEND_URL = "https://www.wasenderapi.com/api/send-message";
 
 type RuntimeEnv = typeof env & {
   WHATSAPP_WEBHOOK_SECRET?: string;
@@ -54,25 +54,29 @@ function isGroupOrStatus(m: WaMessage) {
   return jid.endsWith("@g.us") || jid.endsWith("@broadcast") || jid.endsWith("@newsletter");
 }
 
-async function sendReply(token: string, to: string, text: string) {
-  const response = await fetch(SEND_URL, {method: "POST", headers: {Authorization: `Bearer ${token}`, "Content-Type": "application/json"}, body: JSON.stringify({to, text})});
-  const body = (await response.json().catch(() => ({}))) as {success?: boolean; message?: string};
-  if (!response.ok || body.success === false) throw new Error(body.message || `WhatsApp send failed (${response.status})`);
-}
-
+// Opening this URL in a browser also registers it as the WaSender session webhook.
 export async function GET(request: Request) {
   const runtime = env as RuntimeEnv;
   const key = new URL(request.url).searchParams.get("key");
-  const base = {ok: true, endpoint: "whatsapp-webhook"};
-  if (!runtime.WHATSAPP_WEBHOOK_SECRET || key !== runtime.WHATSAPP_WEBHOOK_SECRET) return Response.json(base);
-  return Response.json({...base, config: {apiToken: Boolean(runtime.WHATSAPP_API_TOKEN), webhookSecret: true, gemini: Boolean(runtime.GEMINI_API_KEY)}, recent});
+  let webhook: Record<string, unknown> = {ok: false, reason: "WHATSAPP_API_TOKEN / WHATSAPP_SESSION_ID not set"};
+  if (runtime.WHATSAPP_API_TOKEN && runtime.WHATSAPP_SESSION_ID) {
+    try { webhook = await ensureWebhook(runtime.WHATSAPP_API_TOKEN, runtime.WHATSAPP_SESSION_ID, publicWebhookUrl(request)); }
+    catch (error) { webhook = {ok: false, reason: error instanceof Error ? error.message : "failed"}; }
+  }
+  const base = {ok: true, endpoint: "whatsapp-webhook", webhookRegistered: Boolean(webhook.ok)};
+  const info = runtime.WHATSAPP_API_TOKEN ? await sessionInfo(runtime.WHATSAPP_API_TOKEN, runtime.WHATSAPP_SESSION_ID) : null;
+  const secrets = [runtime.WHATSAPP_WEBHOOK_SECRET, info?.webhookSecret].filter(Boolean);
+  if (!key || !secrets.includes(key)) return Response.json(base);
+  return Response.json({...base, webhook, config: {apiToken: Boolean(runtime.WHATSAPP_API_TOKEN), sessionId: Boolean(runtime.WHATSAPP_SESSION_ID), sessionApiKeyFound: Boolean(info?.apiKey), sessionStatus: info?.status, webhookSecret: secrets.length > 0, gemini: Boolean(runtime.GEMINI_API_KEY)}, recent});
 }
 
 export async function POST(request: Request) {
   const runtime = env as RuntimeEnv;
-  const secret = runtime.WHATSAPP_WEBHOOK_SECRET;
-  if (secret && request.headers.get("x-webhook-signature") !== secret) {
-    remember({status: 401, reason: "webhook secret mismatch - WHATSAPP_WEBHOOK_SECRET must equal the WaSender webhook secret", signatureSent: Boolean(request.headers.get("x-webhook-signature"))});
+  const info = runtime.WHATSAPP_API_TOKEN ? await sessionInfo(runtime.WHATSAPP_API_TOKEN, runtime.WHATSAPP_SESSION_ID) : null;
+  const secrets = [runtime.WHATSAPP_WEBHOOK_SECRET, info?.webhookSecret].filter(Boolean);
+  const signature = request.headers.get("x-webhook-signature");
+  if (secrets.length && !secrets.includes(signature || "")) {
+    remember({status: 401, reason: "webhook secret mismatch - remove WHATSAPP_WEBHOOK_SECRET from Railway or copy it exactly from WaSender", signatureSent: Boolean(signature)});
     return Response.json({error: "Invalid webhook signature"}, {status: 401});
   }
   if (!runtime.WHATSAPP_API_TOKEN) remember({status: 503, reason: "WHATSAPP_API_TOKEN missing in Railway variables"});
@@ -113,7 +117,7 @@ export async function POST(request: Request) {
         geminiModel: runtime.GEMINI_MODEL,
         geminiDailyLimit: Number(runtime.GEMINI_DAILY_CALL_LIMIT || 150),
       });
-      if (result.response) await sendReply(runtime.WHATSAPP_API_TOKEN, to, result.response);
+      if (result.response) await sendText(runtime.WHATSAPP_API_TOKEN, runtime.WHATSAPP_SESSION_ID, to, result.response);
       results.push({replied: Boolean(result.response), intent: result.intent});
     } catch (error) {
       console.error("WhatsApp webhook error", error);
