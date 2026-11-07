@@ -24,3 +24,7 @@ Doctor / Admin can manage receptionist logins in **Settings → Staff access**: 
 Receptionists start in Appointments. They can use daily operational modules but cannot access Overview, Analytics, Settings, AI Brain, or WhatsApp AI Inbox. The server excludes AI conversations, learning, state and administrative audit records from reception responses; management/AI mutations and staff-management endpoints return HTTP 403 for reception users. Operational patient and billing data remains shared.
 
 Resetting a password or toggling account access increments its session version, immediately invalidating existing receptionist sessions, including after access is re-enabled. Staff session identity, role and version are signed in the existing HttpOnly cookie. The role is determined by the server, never by a role selector in the browser. Migration `0007_staff_accounts.sql` is additive and runs through the existing migration mechanism.
+
+## WhatsApp AI auto-replies (WaSender webhook)
+
+Patient messages reach the AI only through a webhook. In the WaSender dashboard, open the session, set **Webhook URL** to `https://<your-railway-domain>/api/whatsapp/webhook`, enable the `messages.received` (or `messages.upsert`) event and save. Copy the dashboard's webhook secret into the Railway variable `WHATSAPP_WEBHOOK_SECRET`. `WHATSAPP_API_TOKEN` must be the session's API key. Group, status and own outgoing messages are ignored, duplicates are dropped, and chats handed off to staff are not auto-answered.

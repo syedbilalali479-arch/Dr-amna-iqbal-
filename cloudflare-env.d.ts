@@ -4,5 +4,6 @@ declare namespace Cloudflare {
     BUCKET?: R2Bucket;
     WHATSAPP_API_TOKEN?: string;
     WHATSAPP_SESSION_ID?: string;
+    WHATSAPP_WEBHOOK_SECRET?: string;
   }
 }
