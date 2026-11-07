@@ -25,6 +25,28 @@ Receptionists start in Appointments. They can use daily operational modules but 
 
 Resetting a password or toggling account access increments its session version, immediately invalidating existing receptionist sessions, including after access is re-enabled. Staff session identity, role and version are signed in the existing HttpOnly cookie. The role is determined by the server, never by a role selector in the browser. Migration `0007_staff_accounts.sql` is additive and runs through the existing migration mechanism.
 
-## WhatsApp AI auto-replies (WaSender webhook)
+## WhatsApp AI receptionist (WaSender + Gemini)
 
-Patient messages reach the AI only through a webhook. In the WaSender dashboard, open the session, set **Webhook URL** to `https://<your-railway-domain>/api/whatsapp/webhook`, enable the `messages.received` (or `messages.upsert`) event and save. Copy the dashboard's webhook secret into the Railway variable `WHATSAPP_WEBHOOK_SECRET`. `WHATSAPP_API_TOKEN` must be the session's API key. Group, status and own outgoing messages are ignored, duplicates are dropped, and chats handed off to staff are not auto-answered.
+Flow (same design as the Dr. Nighat clinic system), code in `lib/whatsapp/`:
+
+1. WaSender posts every event to `/api/whatsapp/webhook`. Each message is saved in `whatsapp_inbound` first (duplicates ignored), then the request returns 200.
+2. The reply waits for 5 seconds of silence (`WHATSAPP_MESSAGE_REPLY_DELAY_MS`). If the patient sends name, date and time as separate messages, they are answered together in one reply.
+3. Gemini reads the combined turn with the recent chat history, clinic facts, services/prices and the patient's upcoming appointments, and returns a structured decision (intent, name, service, date, time).
+4. The backend alone books, cancels and reschedules: 5:00 PM–10:00 PM, 15-minute slots, no past times, no double booking (nearest free slots are offered). Bookings use the same `saveAppointment` as reception, source `WhatsApp AI`.
+5. Gemini writes a natural Roman Urdu / Urdu / English reply from the verified backend result.
+6. Replies go through a persistent outbox (`whatsapp_messages`) and are retried after 30 s, 2 min, 10 min and 30 min if WaSender fails.
+7. Missed calls get an automatic WhatsApp message (after `WHATSAPP_CALL_REPLY_DELAY_MS`, default 15 s). Voice notes are transcribed by Gemini. Photos/documents are acknowledged and flagged in the Inbox.
+8. Handover: when a patient asks for staff, is upset or reports an urgent symptom, the AI stops and the Inbox row switches to mode `Human`. It resumes automatically after 15 minutes. Setting a conversation's mode to `Human` in the Inbox keeps the AI silent for that patient until it is set back to `AI`.
+9. If Gemini is missing, fails, or reaches `WHATSAPP_AI_DAILY_LIMIT` (default 1500 calls/day), the older rule-based engine answers instead.
+
+Railway variables:
+
+| Variable | Value |
+|---|---|
+| `WHATSAPP_API_TOKEN` | WaSender Personal Access Token (preferred) or the session API key |
+| `WHATSAPP_SESSION_ID` | WaSender session ID |
+| `GEMINI_API_KEY` | Google AI Studio key (required for the natural AI receptionist) |
+| `GEMINI_MODEL` | optional, default `gemini-2.5-flash-lite` |
+| `WHATSAPP_WEBHOOK_SECRET` | optional; the session's webhook secret is read from WaSender automatically |
+
+Opening `https://<domain>/api/whatsapp/webhook` (or the WhatsApp Inbox) registers the webhook in WaSender automatically. Add `?key=<webhook secret>` to see diagnostics: configuration, queue counts and the last 40 events.

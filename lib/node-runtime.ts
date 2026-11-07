@@ -9,4 +9,7 @@ export const env={
  get GEMINI_API_KEY(){return process.env.GEMINI_API_KEY;},
  get GEMINI_MODEL(){return process.env.GEMINI_MODEL;},
  get GEMINI_DAILY_CALL_LIMIT(){return process.env.GEMINI_DAILY_CALL_LIMIT;},
+ get WHATSAPP_AI_DAILY_LIMIT(){return process.env.WHATSAPP_AI_DAILY_LIMIT;},
+ get WHATSAPP_MESSAGE_REPLY_DELAY_MS(){return process.env.WHATSAPP_MESSAGE_REPLY_DELAY_MS;},
+ get WHATSAPP_CALL_REPLY_DELAY_MS(){return process.env.WHATSAPP_CALL_REPLY_DELAY_MS;},
 } as Cloudflare.Env;
