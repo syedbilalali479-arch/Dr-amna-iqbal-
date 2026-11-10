@@ -3,6 +3,7 @@ import {env} from '@/lib/runtime-env';
 import {getChatGPTUser} from '../../chatgpt-auth';
 import {commerceKinds, normalizeDocument, stockDelta, type CommerceRecord} from '../../../lib/commerce';
 import {resolvePatient} from '../../../lib/patient-record';
+import {STATUS_FROM_PAYMENT_SQL} from '../../../lib/appointment-status';
 const clinic='skinuvia';
 const id=()=>crypto.randomUUID();
 export async function GET() {
@@ -33,7 +34,7 @@ export async function POST(request:Request) {
   }
   if(before?.appointment_deleted&&operation!=='delete'&&operation!=='cancel')throw new Error('This invoice was cancelled when its appointment was deleted. Its financial history is read-only.');
   if(operation==='cancel'&&!['invoices','sales','purchases'].includes(kind))throw new Error('This record cannot be cancelled');
-  const after=operation==='delete'?null:normalizeDocument(kind,operation==='cancel'?{...before,...input,id:recordId,state:'Voided'}:{...input,id:recordId,state:input.state||'Finalized'});
+  const after=operation==='delete'?null:normalizeDocument(kind,operation==='cancel'?{...before,...input,id:recordId,state:'Voided'}:{...input,id:recordId,state:kind==='invoices'&&input.state==='Draft'?'Finalized':input.state||'Finalized'});
   if(after&&before&&kind==='invoices'&&operation==='update'&&user.role==='receptionist'){const discount=Math.min(Number(input.discount||0),(before.items||[]).reduce((sum,line)=>sum+Number(line.quantity)*Number(line.price),0));Object.assign(after,normalizeDocument(kind,{...before,id:recordId,discount}));}
   const newEntities:D1PreparedStatement[]=[];
   if(after&&!['vendors','purchases','vendor_payments','expenses'].includes(kind)){const resolved=await resolvePatient(db,clinic,after);after.patient_id=resolved.patient.id;after.patient_name=resolved.patient.name;after.phone=resolved.patient.phone;newEntities.push(...resolved.statements);if(resolved.statements.length)newEntities.push(db.prepare('INSERT INTO audit_logs(id,clinic_id,actor_id,action,entity_type,entity_id,detail) VALUES(?,?,?,?,?,?,?)').bind(id(),clinic,user.userId,'AUTO_CREATE','patients',resolved.patient.id,JSON.stringify({after:resolved.patient})));}
@@ -72,8 +73,8 @@ export async function POST(request:Request) {
    statements.push(db.prepare('DELETE FROM commerce_guards WHERE id=?').bind(guardId));
    statements.push(db.prepare('INSERT INTO stock_movements(id,clinic_id,medicine_id,document_id,quantity,reason) VALUES(?,?,?,?,?,?)').bind(id(),clinic,medicineId,recordId,delta,`${kind}: ${operation}${after?` (${after.state})`:''}`));
   }
-  if(kind==='invoices'&&after?.appointment_id){statements.push(db.prepare('UPDATE appointments SET payment_status=?,updated_at=CURRENT_TIMESTAMP WHERE clinic_id=? AND id=?').bind(after.state==='Finalized'?after.status:'Unpaid',clinic,String(after.appointment_id)));}
-  if(kind==='invoices'&&!after&&before?.appointment_id)statements.push(db.prepare("UPDATE appointments SET payment_status='Unpaid',updated_at=CURRENT_TIMESTAMP WHERE clinic_id=? AND id=?").bind(clinic,before.appointment_id));
+  if(kind==='invoices'&&after?.appointment_id){const payment=after.state==='Finalized'?after.status:'Unpaid';statements.push(db.prepare(`UPDATE appointments SET payment_status=?,status=${STATUS_FROM_PAYMENT_SQL},updated_at=CURRENT_TIMESTAMP WHERE clinic_id=? AND id=?`).bind(payment,payment,clinic,String(after.appointment_id)));}
+  if(kind==='invoices'&&!after&&before?.appointment_id)statements.push(db.prepare(`UPDATE appointments SET payment_status='Unpaid',status=${STATUS_FROM_PAYMENT_SQL},updated_at=CURRENT_TIMESTAMP WHERE clinic_id=? AND id=?`).bind('Unpaid',clinic,before.appointment_id));
   statements.push(db.prepare('INSERT INTO audit_logs(id,clinic_id,actor_id,action,entity_type,entity_id,detail) VALUES(?,?,?,?,?,?,?)').bind(id(),clinic,user.userId,operation.toUpperCase(),kind,recordId,JSON.stringify({before,after})));
   await db.batch(statements);
   return Response.json({ok:true,id:recordId,record:after?await describeRecord(db,clinic,kind,{...after,id:recordId,revision:(stored?.revision||0)+1}):null});
