@@ -5,7 +5,7 @@ import {FinanceEditor} from './finance-editor';
 import {printInvoice} from '../lib/invoice-print';
 export {FinanceEditor} from './finance-editor';
 export {printInvoice} from '../lib/invoice-print';
-import {Plus,Printer,X,Trash2,MoreHorizontal,Package,AlertTriangle} from 'lucide-react';
+import {Plus,Printer,X,Trash2,MoreHorizontal,Package,AlertTriangle,Check} from 'lucide-react';
 import {vendorBalance,type CommerceRecord,type Line} from '../lib/commerce';
 import {matchesSearch} from '../lib/search';
 import {purchasesAfterTotalBaseline} from '../lib/purchase-summary';
@@ -17,7 +17,7 @@ export const localDate=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Karac
 export function AppointmentActions({row,data,role,edit,remove,update,followup,invoice,prescription,print}:{row:Row;data:Data;role:'admin'|'receptionist';edit:()=>void;remove:()=>void;update:(status:string)=>void;followup:()=>void;invoice:()=>void;prescription:()=>void;print:()=>void}) {
  const existing=(data.invoices||[]).some(i=>i.appointment_id===row.id);
  const completed=row.status==='Completed',completedAt=new Date(String(row.updated_at||row.created_at||'').replace(' ','T')+'Z').getTime(),within24=!completed||Date.now()-completedAt<86_400_000;
- if(role==='admin')return <div className="appointmentActions" role="group" aria-label="Doctor appointment actions"><button onClick={prescription}>Add Prescription</button><button onClick={edit}>Edit</button><button onClick={print}><Printer size={12}/> Print</button><button className="danger" onClick={remove}>Delete</button></div>;
+ if(role==='admin'){const off=['Cancelled','No-show'].includes(String(row.status));return <div className="appointmentActions" role="group" aria-label="Doctor appointment actions"><button onClick={prescription} disabled={off}>Add Prescription</button><button className="primary" onClick={()=>update('Completed')} disabled={off||completed} title={completed?'Already checked':'Mark this patient as checked (Completed)'}><Check size={12}/> Checked</button></div>;}
  return <div className="appointmentActions" role="group" aria-label="Reception appointment actions"><button onClick={edit} disabled={completed}>Edit</button><button className="invoiceAction" onClick={invoice} disabled={completed&&!within24}>{existing?'Edit bill':'Bill'}</button><button onClick={followup} disabled={completed&&!within24}>Schedule follow-up</button><button onClick={print}><Printer size={12}/> Print</button><button onClick={()=>update('Cancelled')} disabled={completed||row.status==='Cancelled'}>Cancel</button><button onClick={()=>update('No-show')} disabled={completed||row.status==='No-show'}>Didn’t come</button></div>;
 }
 export function StockAlerts({rows}:{rows:Row[]}) {
