@@ -25,19 +25,22 @@ export function AccountBook({data}:{data:Data}){
  const sales=(data.sales||[]).filter(row=>row.state==='Finalized'&&within(row));
  const purchases=(data.purchases||[]).filter(row=>row.state==='Finalized'&&within(row));
  const expenses=(data.expenses||[]).filter(row=>within(row));
+ const vendorPayments=(data.vendor_payments||[]).filter(row=>within(row));
  const appointmentIncome=appointments.reduce((sum,row)=>sum+Number(row.paid||0),0);
  const medicineIncome=sales.reduce((sum,row)=>sum+Number(row.paid||0),0);
  const purchaseOutflow=purchases.reduce((sum,row)=>sum+Number(row.paid||0),0);
  const generalExpenses=expenses.reduce((sum,row)=>sum+Number(row.total_amount||0),0);
- const moneyIn=appointmentIncome+medicineIncome,moneyOut=purchaseOutflow+generalExpenses,netCash=appointmentIncome+medicineIncome-purchaseOutflow-generalExpenses;
+ const vendorPaid=vendorPayments.reduce((sum,row)=>sum+Number(row.amount||0),0);
+ const moneyIn=appointmentIncome+medicineIncome,moneyOut=purchaseOutflow+vendorPaid+generalExpenses,netCash=moneyIn-moneyOut;
  const customerOutstanding=[...appointments,...sales].reduce((sum,row)=>sum+Number(row.balance||0),0);
  const companyOutstanding=(data.vendors||[]).map(vendor=>({vendor,balance:vendorBalance(vendor,data.purchases||[],data.vendor_payments||[])})).filter(item=>item.balance>0).sort((a,b)=>b.balance-a.balance);
  const vendorOutstanding=companyOutstanding.reduce((sum,item)=>sum+item.balance,0);
- const entries=([...appointments.map(row=>({...row,date:visitDate(row),bookType:'Appointment revenue',accountName:row.patient_name,visit:visitOf(row).text,income:Number(row.paid||0),outflow:0})),...sales.map(row=>({...row,bookType:'Medicine sale',accountName:row.patient_name,income:Number(row.paid||0),outflow:0})),...purchases.map(row=>({...row,bookType:'Medicine purchase',accountName:row.vendor_name,income:0,outflow:Number(row.paid||0)})),...expenses.map(row=>({...row,bookType:'General expense',accountName:row.expense_name,income:0,outflow:Number(row.total_amount||0)}))] as Row[]).sort((a,b)=>rowDate(b).localeCompare(rowDate(a))||String(b.created_at||'').localeCompare(String(a.created_at||'')));
+ const entries=([...appointments.map(row=>({...row,date:visitDate(row),bookType:'Appointment revenue',accountName:row.patient_name,visit:visitOf(row).text,income:Number(row.paid||0),outflow:0})),...sales.map(row=>({...row,bookType:'Medicine sale',accountName:row.patient_name,income:Number(row.paid||0),outflow:0})),...purchases.map(row=>({...row,bookType:'Medicine purchase',accountName:row.vendor_name,income:0,outflow:Number(row.paid||0)})),...vendorPayments.map(row=>({...row,bookType:'Vendor payment',accountName:row.vendor_name,income:0,outflow:Number(row.amount||0)})),...expenses.map(row=>({...row,bookType:'General expense',accountName:row.expense_name,income:0,outflow:Number(row.total_amount||0)}))] as Row[]).sort((a,b)=>rowDate(b).localeCompare(rowDate(a))||String(b.created_at||'').localeCompare(String(a.created_at||'')));
  const breakdown=[
   {label:'Appointments',count:appointments.length,income:appointmentIncome,outflow:0},
   {label:'Medicine sales',count:sales.length,income:medicineIncome,outflow:0},
   {label:'Medicine purchases paid',count:purchases.length,income:0,outflow:purchaseOutflow},
+  {label:'Vendor payments',count:vendorPayments.length,income:0,outflow:vendorPaid},
   {label:'General expenses',count:expenses.length,income:0,outflow:generalExpenses},
  ];
  const label=auditPeriodLabel(period);
@@ -54,7 +57,7 @@ export function AccountBook({data}:{data:Data}){
    <div className="auditPeriodTitle"><span>FINANCIAL AUDIT PERIOD</span><h2>{label}</h2><p>{entries.length} recorded transaction{entries.length===1?'':'s'} in this period</p></div>
    <div className="auditTotals">
     <article className="moneyIn"><TrendingUp/><div><small>Total money in</small><b>{money(moneyIn)}</b><span>Appointments + medicine sales</span></div></article>
-    <article className="moneyOut"><TrendingDown/><div><small>Total money out</small><b>{money(moneyOut)}</b><span>Purchases + general expenses</span></div></article>
+    <article className="moneyOut"><TrendingDown/><div><small>Total money out</small><b>{money(moneyOut)}</b><span>Purchases + vendor payments + general expenses</span></div></article>
     <article className={netCash<0?'moneyOut':'netCash'}><WalletCards/><div><small>Net cash</small><b>{money(netCash)}</b><span>Money in minus money out</span></div></article>
    </div>
   </section>
