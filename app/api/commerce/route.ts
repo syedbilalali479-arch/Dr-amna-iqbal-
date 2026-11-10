@@ -11,8 +11,8 @@ export async function GET() {
  try {
   const result:Record<string,unknown[]>={vendors:[],purchases:[],sales:[],vendor_payments:[],expenses:[],invoices:[]};
   const docs=await env.DB!.prepare('SELECT * FROM commerce_documents WHERE clinic_id=? ORDER BY created_at DESC').bind(clinic).all<{id:string;kind:string;body:string;revision:number;created_at:string;updated_at:string}>();
-  const liveAppointments=new Set((await env.DB!.prepare('SELECT id FROM appointments WHERE clinic_id=?').bind(clinic).all<{id:string}>()).results.map(row=>row.id));
-  for(const row of docs.results){const body=JSON.parse(row.body);if(row.kind==='invoices'&&body.appointment_id&&!liveAppointments.has(String(body.appointment_id)))body.appointment_missing=true;result[row.kind]?.push({...body,id:row.id,revision:row.revision,created_at:row.created_at,updated_at:row.updated_at});}
+  const liveAppointments=new Map((await env.DB!.prepare('SELECT id,appointment_date FROM appointments WHERE clinic_id=?').bind(clinic).all<{id:string;appointment_date:string}>()).results.map(row=>[row.id,row.appointment_date]));
+  for(const row of docs.results){const body=JSON.parse(row.body);if(row.kind==='invoices'&&body.appointment_id){if(liveAppointments.has(String(body.appointment_id)))body.appointment_date=liveAppointments.get(String(body.appointment_id));else body.appointment_missing=true;}result[row.kind]?.push({...body,id:row.id,revision:row.revision,created_at:row.created_at,updated_at:row.updated_at});}
   result.stock_movements=(await env.DB!.prepare('SELECT * FROM stock_movements WHERE clinic_id=? ORDER BY created_at DESC LIMIT 500').bind(clinic).all()).results;
   return Response.json(await decorateRecords(env.DB!,clinic,result));
  }catch(e){return Response.json({error:e instanceof Error?e.message:'Unable to load pharmacy records'},{status:500});}
