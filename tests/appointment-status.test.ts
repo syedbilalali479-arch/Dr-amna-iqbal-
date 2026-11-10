@@ -65,3 +65,16 @@ test('migration 0014 closes an unbilled booking duplicated by a paid walk-in the
   assert.equal(st('walkin').status,'Confirmed');assert.equal(st('other-day').status,AWAITING_PAYMENT);assert.equal(st('sister').status,AWAITING_PAYMENT);
  }finally{d1.connection.close()}
 });
+test('migration 0015 cancels bills whose appointment was deleted and leaves live bills alone',async()=>{
+ const {SQLiteD1}=await import('../lib/sqlite-d1.ts');const d1=new SQLiteD1(':memory:','drizzle');const db=d1.connection;
+ try{
+  db.prepare("INSERT INTO appointments(id,clinic_id,patient_id,patient_name,phone,doctor,service,appointment_date,appointment_time,status,payment_status,price) VALUES('live','skinuvia','PT-1','A','0300','Dr. Aamina Iqbal','Skin Consultation','2026-11-10','18:00','Confirmed','Paid',2000)").run();
+  const bill=(id:string,appointment:string)=>db.prepare("INSERT INTO commerce_documents(id,clinic_id,kind,body) VALUES(?,'skinuvia','invoices',?)").run(id,JSON.stringify({appointment_id:appointment,state:'Finalized',status:'Paid',paid:2000,net:2000,balance:0,date:'2026-11-10'}));
+  bill('I-live','live');bill('I-gone','deleted-appointment');
+  db.exec(readFileSync('drizzle/0015_void_bills_of_deleted_appointments.sql','utf8'));
+  const body=(id:string)=>JSON.parse((db.prepare('SELECT body FROM commerce_documents WHERE id=?').get(id) as {body:string}).body);
+  assert.equal(body('I-live').state,'Finalized');
+  assert.equal(body('I-gone').state,'Voided');assert.equal(body('I-gone').appointment_deleted,true);assert.equal(body('I-gone').paid,2000);
+  assert.equal((db.prepare("SELECT count(*) AS n FROM audit_logs WHERE entity_id='I-gone'").get() as {n:number}).n,1);
+ }finally{d1.connection.close()}
+});

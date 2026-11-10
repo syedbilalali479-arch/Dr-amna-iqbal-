@@ -13,7 +13,7 @@ const modes:{value:AuditMode;label:string}[]=[{value:'day',label:'Daily'},{value
 export function AccountBook({data}:{data:Data}){
  const today=clinicDate(),[mode,setMode]=useState<AuditMode>('day'),[day,setDay]=useState(today),[month,setMonth]=useState(today.slice(0,7)),[from,setFrom]=useState(today),[to,setTo]=useState(today);
  const period={mode,day,month,from,to},within=(row:Row)=>dateInAuditPeriod(rowDate(row),period);
- const appointments=(data.invoices||[]).filter(row=>row.state==='Finalized'&&Boolean(row.appointment_id)&&within(row));
+ const appointments=(data.invoices||[]).filter(row=>row.state==='Finalized'&&Boolean(row.appointment_id)&&!row.appointment_deleted&&!row.appointment_missing&&within(row));
  const sales=(data.sales||[]).filter(row=>row.state==='Finalized'&&within(row));
  const purchases=(data.purchases||[]).filter(row=>row.state==='Finalized'&&within(row));
  const expenses=(data.expenses||[]).filter(row=>within(row));
