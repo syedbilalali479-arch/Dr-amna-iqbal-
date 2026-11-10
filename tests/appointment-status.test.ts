@@ -30,3 +30,38 @@ test('migration 0012 confirms paid appointments, marks the rest Awaiting Payment
  for(const [id,,,expected] of rows)assert.equal((db.prepare('SELECT status FROM appointments WHERE id=?').get(id) as {status:string}).status,expected,id);
  assert.equal((db.prepare("SELECT count(*) AS n FROM audit_logs WHERE action='STATUS_MIGRATION'").get() as {n:number}).n,4);
 });
+test('migration 0013 finalizes draft appointment bills and re-syncs payment',async()=>{
+ const {SQLiteD1}=await import('../lib/sqlite-d1.ts');const d1=new SQLiteD1(':memory:','drizzle');const db=d1.connection;
+ try{
+  const appt=(id:string,status:string,payment:string)=>db.prepare("INSERT INTO appointments(id,clinic_id,patient_id,patient_name,phone,doctor,service,appointment_date,appointment_time,status,payment_status,price) VALUES(?,'skinuvia','PT-1','Rabia','0300','Dr. Aamina Iqbal','Skin Consultation','2026-11-10','18:00',?,?,2000)").run(id,status,payment);
+  const bill=(id:string,appointment:string,state:string,paid:number)=>db.prepare("INSERT INTO commerce_documents(id,clinic_id,kind,body) VALUES(?,'skinuvia','invoices',?)").run(id,JSON.stringify({appointment_id:appointment,patient_id:'PT-1',patient_name:'Rabia',state,net:2000,paid,balance:2000-paid,status:paid===2000?'Paid':paid>0?'Partially Paid':'Unpaid'}));
+  appt('A-draft-paid',AWAITING_PAYMENT,'Unpaid');bill('I-1','A-draft-paid','Draft',2000);
+  appt('A-draft-part','Confirmed','Unpaid');bill('I-2','A-draft-part','Draft',500);
+  appt('A-final-unpaid','Confirmed','Paid');bill('I-3','A-final-unpaid','Finalized',0);
+  appt('A-done','Completed','Unpaid');bill('I-4','A-done','Draft',2000);
+  appt('A-nobill',AWAITING_PAYMENT,'Unpaid');
+  db.exec(readFileSync('drizzle/0013_finalize_draft_appointment_bills.sql','utf8'));
+  const row=(id:string)=>db.prepare('SELECT status,payment_status FROM appointments WHERE id=?').get(id) as {status:string;payment_status:string};
+  assert.deepEqual({...row('A-draft-paid')},{status:'Confirmed',payment_status:'Paid'});
+  assert.deepEqual({...row('A-draft-part')},{status:'Confirmed',payment_status:'Partially Paid'});
+  assert.deepEqual({...row('A-final-unpaid')},{status:AWAITING_PAYMENT,payment_status:'Unpaid'});
+  assert.deepEqual({...row('A-done')},{status:'Completed',payment_status:'Paid'});
+  assert.deepEqual({...row('A-nobill')},{status:AWAITING_PAYMENT,payment_status:'Unpaid'});
+  const states=db.prepare("SELECT json_extract(body,'$.state') AS s FROM commerce_documents WHERE kind='invoices'").all() as {s:string}[];
+  assert.ok(states.every(x=>x.s==='Finalized'));
+  assert.equal((db.prepare("SELECT count(*) AS n FROM audit_logs WHERE action='FINALIZE_DRAFT_BILL'").get() as {n:number}).n,3);
+ }finally{d1.connection.close()}
+});
+test('migration 0014 closes an unbilled booking duplicated by a paid walk-in the same day',async()=>{
+ const {SQLiteD1}=await import('../lib/sqlite-d1.ts');const d1=new SQLiteD1(':memory:','drizzle');const db=d1.connection;
+ try{
+  const appt=(id:string,name:string,phone:string,date:string,status:string)=>db.prepare("INSERT INTO appointments(id,clinic_id,patient_id,patient_name,phone,doctor,service,appointment_date,appointment_time,status,payment_status,price) VALUES(?,'skinuvia','PT-1',?,?,'Dr. Aamina Iqbal','Skin Consultation',?,'18:00',?,'Unpaid',2000)").run(id,name,phone,date,status);
+  appt('booking','Rabia','0300','2026-11-10',AWAITING_PAYMENT);appt('walkin','rabia ','0300','2026-11-10','Confirmed');
+  appt('other-day','Rabia','0300','2026-11-11',AWAITING_PAYMENT);appt('sister','Sana','0300','2026-11-10',AWAITING_PAYMENT);
+  db.prepare("INSERT INTO commerce_documents(id,clinic_id,kind,body) VALUES('INV-W','skinuvia','invoices',?)").run(JSON.stringify({appointment_id:'walkin',state:'Finalized',status:'Paid',paid:2000,net:2000}));
+  db.exec(readFileSync('drizzle/0014_close_duplicate_unbilled_bookings.sql','utf8'));
+  const st=(id:string)=>(db.prepare('SELECT status,notes FROM appointments WHERE id=?').get(id) as {status:string;notes:string});
+  assert.equal(st('booking').status,'Cancelled');assert.match(st('booking').notes,/walkin/);
+  assert.equal(st('walkin').status,'Confirmed');assert.equal(st('other-day').status,AWAITING_PAYMENT);assert.equal(st('sister').status,AWAITING_PAYMENT);
+ }finally{d1.connection.close()}
+});

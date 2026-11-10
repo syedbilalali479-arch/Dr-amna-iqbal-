@@ -1,12 +1,12 @@
 import {resolvePatient} from './patient-record.ts';
 import {amount,normalizeDocument,type CommerceRecord} from './commerce.ts';
-import {statusForPayment} from './appointment-status.ts';
+import {statusForPayment,PAYMENT_DRIVEN_STATUSES} from './appointment-status.ts';
 type Row=Record<string,unknown>;
 export type BookingRequest={record:Row;billing?:{create?:boolean;discount?:unknown;paid?:unknown;method?:string;reference?:string};request_id:string};
 const clinic='skinuvia';
 const appointmentColumns=['patient_id','patient_name','phone','doctor','service','appointment_date','appointment_time','status','payment_status','token','source','price','notes','parent_appointment_id'];
 export async function saveAppointment(db:D1Database,actor:string,input:BookingRequest){
- const r=input.record||{},editing=Boolean(r.id);
+ const r=input.record||{};let editing=Boolean(r.id);
  r.doctor='Dr. Aamina Iqbal';
  if(r.source==='Walk-in'){
   r.patient_name=String(r.patient_name||'Walk-in patient').trim()||'Walk-in patient';
@@ -16,6 +16,15 @@ export async function saveAppointment(db:D1Database,actor:string,input:BookingRe
   r.service=String(r.service||'Skin Consultation').trim()||'Skin Consultation';
  }
  if(!/^[a-f0-9-]{36}$/i.test(input.request_id||''))throw new Error('Missing booking request identifier');
+ if(!editing&&r.source==='Walk-in'&&input.billing?.create){
+  // A retried walk-in may have been attached to an existing booking: replay that result.
+  const replayBill=await db.prepare("SELECT id,body,revision FROM commerce_documents WHERE clinic_id=? AND kind='invoices' AND id=?").bind(clinic,'INV-'+input.request_id).first<{id:string;body:string;revision:number}>();
+  if(replayBill){const bill={...JSON.parse(replayBill.body),id:replayBill.id,revision:replayBill.revision} as CommerceRecord;const appointment=await db.prepare('SELECT * FROM appointments WHERE clinic_id=? AND id=?').bind(clinic,String(bill.appointment_id)).first<Row>();return {appointment,invoice:bill,replayed:true};}
+  // Patient already booked today (reception / WhatsApp) and has no bill yet: bill that booking instead of creating a duplicate.
+  const phone=String(r.phone||'').trim(),name=String(r.patient_name||'').trim().toLowerCase();
+  if(phone&&name){const booked=await db.prepare(`SELECT * FROM appointments a WHERE a.clinic_id=? AND a.appointment_date=? AND a.phone=? AND lower(trim(a.patient_name))=? AND a.status IN (${PAYMENT_DRIVEN_STATUSES.map(()=>'?').join(',')}) AND NOT EXISTS(SELECT 1 FROM commerce_documents d WHERE d.clinic_id=a.clinic_id AND d.kind='invoices' AND json_extract(d.body,'$.appointment_id')=a.id) ORDER BY a.appointment_time LIMIT 1`).bind(clinic,String(r.appointment_date),phone,name,...PAYMENT_DRIVEN_STATUSES).first<Row>();
+   if(booked){r.id=booked.id;r.appointment_time=booked.appointment_time;r.updated_at=booked.updated_at;r.source=booked.source;r.token=r.token||booked.token;r.notes=String(r.notes||'').trim()||booked.notes;editing=true;}}
+ }
  const id=editing?String(r.id):'APT-'+input.request_id;
  const previous=await db.prepare('SELECT * FROM appointments WHERE clinic_id=? AND id=?').bind(clinic,id).first<Row>();
  if(editing&&!previous)throw new Error('This appointment no longer exists');
