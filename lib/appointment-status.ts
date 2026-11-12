@@ -5,10 +5,10 @@ export const PAYMENT_DRIVEN_STATUSES=['Pending','Confirmed','Arrived','Waiting',
 export const isPaymentDrivenStatus=(status:unknown)=>!status||PAYMENT_DRIVEN_STATUSES.includes(String(status));
 export function statusForPayment(current:unknown,paymentStatus:unknown){
  if(!isPaymentDrivenStatus(current))return String(current);
- return paymentStatus==='Paid'||paymentStatus==='Partially Paid'?'Confirmed':AWAITING_PAYMENT;
+ return ['Paid','Partially Paid','Refunded'].includes(String(paymentStatus))?'Confirmed':AWAITING_PAYMENT;
 }
 /** SQL CASE expression keeping final statuses and deriving the rest from the bound payment status (one bind: the payment status). */
-export const STATUS_FROM_PAYMENT_SQL=`CASE WHEN status IN (${PAYMENT_DRIVEN_STATUSES.map(s=>`'${s}'`).join(',')}) THEN CASE WHEN ? IN ('Paid','Partially Paid') THEN 'Confirmed' ELSE '${AWAITING_PAYMENT}' END ELSE status END`;
+export const STATUS_FROM_PAYMENT_SQL=`CASE WHEN status IN (${PAYMENT_DRIVEN_STATUSES.map(s=>`'${s}'`).join(',')}) THEN CASE WHEN ? IN ('Paid','Partially Paid','Refunded') THEN 'Confirmed' ELSE '${AWAITING_PAYMENT}' END ELSE status END`;
 export function statusLabel(status:unknown,hasBill:boolean){
  if(status!==AWAITING_PAYMENT)return String(status??'—');
  return hasBill?'Bill made · Waiting for payment':'Bill not made · Waiting for payment';

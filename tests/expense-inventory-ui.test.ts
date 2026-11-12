@@ -11,7 +11,7 @@ test('expense form only asks reception for name and total amount',()=>{
  assert.match(consoleSource,/\["Expenses",WalletCards,"expenses"\]/);
  assert.match(editorSource,/kind==='expenses'.*expense_name','Expense name'.*total_amount','Total amount'/);
  assert.match(accountSource,/generalExpenses.*total_amount/);
- assert.match(accountSource,/appointmentIncome\+medicineIncome-purchaseOutflow-generalExpenses/);
+ assert.match(accountSource,/moneyOut=purchaseOutflow\+vendorPaid\+generalExpenses,netCash=moneyIn-moneyOut/);
 });
 
 test('inventory UI is simplified and purchase barcode is optional',()=>{
