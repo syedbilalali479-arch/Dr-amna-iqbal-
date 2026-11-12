@@ -78,3 +78,25 @@ test('migration 0015 cancels bills whose appointment was deleted and leaves live
   assert.equal((db.prepare("SELECT count(*) AS n FROM audit_logs WHERE entity_id='I-gone'").get() as {n:number}).n,1);
  }finally{d1.connection.close()}
 });
+test('migration 0016 re-syncs status and payment drift left by an older build',async()=>{
+ const {SQLiteD1}=await import('../lib/sqlite-d1.ts');const d1=new SQLiteD1(':memory:','drizzle');const db=d1.connection;
+ try{
+  const appt=(id:string,status:string,payment:string,name='P',phone='0300')=>db.prepare("INSERT INTO appointments(id,clinic_id,patient_id,patient_name,phone,doctor,service,appointment_date,appointment_time,status,payment_status,price) VALUES(?,'skinuvia','PT-1',?,?,'Dr. Aamina Iqbal','Skin Consultation','2026-11-12','18:45',?,?,2000)").run(id,name,phone,status,payment);
+  const bill=(id:string,appointment:string,status:string,paid:number)=>db.prepare("INSERT INTO commerce_documents(id,clinic_id,kind,body) VALUES(?,'skinuvia','invoices',?)").run(id,JSON.stringify({appointment_id:appointment,state:'Finalized',status,paid,net:2000}));
+  appt('maryam',AWAITING_PAYMENT,'Paid','Maryam','0301');bill('I-m','maryam','Paid',2000);
+  appt('walkin-old','Waiting','Paid','W','0302');bill('I-w','walkin-old','Paid',2000);
+  appt('booked','Confirmed','Unpaid','Q','0303');
+  appt('refund',AWAITING_PAYMENT,'Paid','R','0304');bill('I-r','refund','Refunded',0);
+  appt('done','Completed','Unpaid','D','0305');bill('I-d','done','Paid',2000);
+  appt('dup-booking',AWAITING_PAYMENT,'Unpaid','Sana','0306');appt('dup-walkin','Waiting','Paid','sana','0306');bill('I-s','dup-walkin','Paid',2000);
+  db.exec(readFileSync('drizzle/0016_resync_after_rollback.sql','utf8'));
+  const row=(id:string)=>({...(db.prepare('SELECT status,payment_status FROM appointments WHERE id=?').get(id) as object)});
+  assert.deepEqual(row('maryam'),{status:'Confirmed',payment_status:'Paid'});
+  assert.deepEqual(row('walkin-old'),{status:'Confirmed',payment_status:'Paid'});
+  assert.deepEqual(row('booked'),{status:AWAITING_PAYMENT,payment_status:'Unpaid'});
+  assert.deepEqual(row('refund'),{status:'Confirmed',payment_status:'Refunded'});
+  assert.deepEqual(row('done'),{status:'Completed',payment_status:'Paid'});
+  assert.deepEqual(row('dup-booking'),{status:'Cancelled',payment_status:'Unpaid'});
+  assert.deepEqual(row('dup-walkin'),{status:'Confirmed',payment_status:'Paid'});
+ }finally{d1.connection.close()}
+});
