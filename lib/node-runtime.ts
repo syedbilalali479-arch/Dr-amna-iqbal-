@@ -3,8 +3,8 @@ import {SQLiteD1} from './sqlite-d1';
 let database:SQLiteD1|undefined;
 export const env={
  get DB(){database??=new SQLiteD1(process.env.DATABASE_PATH||join(process.env.RAILWAY_VOLUME_MOUNT_PATH||'.railway-data','skinuvia.sqlite'),join(process.cwd(),'drizzle'));return database as unknown as D1Database;},
- get WHATSAPP_API_TOKEN(){return process.env.WHATSAPP_API_TOKEN;},
- get WHATSAPP_SESSION_ID(){return process.env.WHATSAPP_SESSION_ID;},
+ get WHATSAPP_API_TOKEN(){return process.env.WHATSAPP_API_TOKEN||process.env.WASENDER_API_TOKEN||process.env.WASENDER_API_KEY||process.env.WHATSAPP_API_KEY;},
+ get WHATSAPP_SESSION_ID(){return process.env.WHATSAPP_SESSION_ID||process.env.WASENDER_SESSION_ID||process.env.WHATSAPP_SESSION||process.env.WASENDER_SESSION;},
  get WHATSAPP_WEBHOOK_SECRET(){return process.env.WHATSAPP_WEBHOOK_SECRET;},
  get GEMINI_API_KEY(){return process.env.GEMINI_API_KEY;},
  get GEMINI_MODEL(){return process.env.GEMINI_MODEL;},
