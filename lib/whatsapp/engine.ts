@@ -10,6 +10,7 @@ import {sendText, sendingKey} from "../wasender.ts";
 import {parseWebhook, type InboundItem} from "./payload.ts";
 import {handleTurn, type Contact, type Draft} from "./brain.ts";
 import {transcribe, type GeminiConfig, type Language} from "./gemini.ts";
+import {forwardedReply, savePatientDocument} from "./media.ts";
 
 const CLINIC = "skinuvia";
 const BASE = "https://www.wasenderapi.com/api";
@@ -158,6 +159,12 @@ async function handleBatch(key: string, items: Array<Record<string, string>>) {
     return;
   }
 
+  // Reports, prescriptions and photos go to the dashboard (Reports & Prescriptions) for the doctor.
+  const media = messages.filter((i) => i.kind === "image" || i.kind === "document");
+  for (const item of media) {
+    const saved = await savePatientDocument(db(), key, item as never, {token: runtime().WHATSAPP_API_TOKEN, sessionId: runtime().WHATSAPP_SESSION_ID, contactName: contact.name});
+    log({contact: mask(key), stage: "document", saved: saved.saved, error: saved.error || undefined});
+  }
   // Voice notes are transcribed; pictures/documents are flagged for staff.
   const texts: string[] = [];
   let voiceFailed = false;
@@ -167,7 +174,7 @@ async function handleBatch(key: string, items: Array<Record<string, string>>) {
     else texts.push(item.text);
   }
   await recordInbound(key, messages, texts);
-  const turn = texts.length > 1 ? texts.map((t, i) => `[Message ${i + 1}] ${t}`).join("\n") : texts[0] || "";
+  let turn = texts.length > 1 ? texts.map((t, i) => `[Message ${i + 1}] ${t}`).join("\n") : texts[0] || "";
 
   // Staff manually took over (Inbox mode = Human): stay silent.
   if (contact.mode === "Human" && !contact.human_controlled) { await upsertConversation(contact, turn, "human", "Human", true, {draft: contact.draft}); log({contact: mask(key), stage: "skip", reason: "staff has taken over (mode Human)"}); return; }
@@ -180,6 +187,15 @@ async function handleBatch(key: string, items: Array<Record<string, string>>) {
   }
   if (contact.human_controlled) await db().prepare("UPDATE whatsapp_contacts SET human_controlled=0,handover_at=NULL,handover_reason=NULL WHERE clinic_id=? AND contact_key=?").bind(CLINIC, key).run();
 
+  if (media.length) {
+    // Fixed, reliable answer: received and forwarded to the doctor. Any other text in the same burst is answered below.
+    await queueReply(contact, forwardedReply(contact.language, "Dr. Aamina Iqbal"), "DOCUMENT_FORWARDED", "document");
+    if (!messages.some((i) => i.kind === "text" || i.kind === "audio")) { await upsertConversation(contact, turn, "document", contact.mode === "Human" ? "Human" : "AI", true, {draft: contact.draft}); return; }
+    // The document is already acknowledged; the AI only answers the rest.
+    const rest = texts.filter((t) => !t.startsWith("[Patient sent a "));
+    texts.splice(0, texts.length, ...rest);
+    turn = rest.length > 1 ? rest.map((t, i) => `[Message ${i + 1}] ${t}`).join("\n") : rest[0] || "";
+  }
   if (voiceFailed && texts.every((t) => t.startsWith("[Voice note - "))) {
     await queueReply(contact, "Aap ka voice note mil gaya hai, lekin abhi main isay clear sun nahi pa rahi. Please apni baat short text mein likh dein, main foran madad karti hoon.", "VOICE_UNCLEAR", "voice");
     await upsertConversation(contact, turn, "voice", "AI", true, {draft: contact.draft});

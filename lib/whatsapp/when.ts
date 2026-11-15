@@ -130,7 +130,7 @@ const NOT_NAME = /\b(aaj|aj|kal|parson|today|tomorrow|baje|bje|pm|am|shaam|sham|
 /** Cleans a patient-provided name ("mera naam Ali Khan hai" -> "Ali Khan"); null if it is not a name. */
 export function cleanName(value: string | null | undefined, serviceNames: string[] = []): string | null {
   if (!value) return null;
-  let n = value.trim().replace(/[.!?،,]+$/g, "")
+  const n = value.trim().replace(/[.!?،,]+$/g, "")
     .replace(/^(mera|meri|my|patient\s+ka|patient\s+ki|patient)?\s*(naam|name|nam)\s*(is|hai|he|:|-)?\s*/i, "")
     .replace(/^(main|mai|i am|i'm|me)\s+/i, "")
     .replace(/\s+(hai|he|hain|hy|ha)$/i, "")
