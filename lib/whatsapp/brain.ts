@@ -4,6 +4,7 @@ import {clinicProfile, servicePriceLabel} from "../clinic-profile.ts";
 import {pakistanParts} from "../pakistan-time.ts";
 import {saveAppointment} from "../appointment-booking.ts";
 import {analyze, writeReply, type Analysis, type GeminiConfig, type Language} from "./gemini.ts";
+import {cleanName, nameAppearsIn, parseAllDates, parseTime} from "./when.ts";
 
 const CLINIC = "skinuvia";
 const DOCTOR = "Dr. Aamina Iqbal";
@@ -28,17 +29,20 @@ async function loadFacts(db: D1Database) {
 
 async function upcoming(db: D1Database, phone: string): Promise<Appointment[]> {
   const today = pakistanParts().date;
-  return (await db.prepare("SELECT id,patient_name,service,appointment_date,appointment_time,status,updated_at FROM appointments WHERE clinic_id=? AND phone=? AND appointment_date>=? AND status NOT IN ('Cancelled','Completed','Rescheduled','No Show') ORDER BY appointment_date,appointment_time LIMIT 10").bind(CLINIC, phone, today).all<Appointment>()).results;
+  return (await db.prepare("SELECT id,patient_name,service,appointment_date,appointment_time,status,updated_at FROM appointments WHERE clinic_id=? AND phone=? AND appointment_date>=? AND status NOT IN ('Cancelled','Completed','Rescheduled','No Show','No-show') ORDER BY appointment_date,appointment_time LIMIT 10").bind(CLINIC, phone, today).all<Appointment>()).results;
 }
 
 function factsText(facts: Awaited<ReturnType<typeof loadFacts>>) {
-  const services = facts.treatments.map((t) => `- ${t.name}: ${servicePriceLabel(t)}${t.duration ? `, about ${t.duration} min` : ""}${t.availability ? `, ${t.availability}` : ""}${t.booking_instructions ? `. Note: ${t.booking_instructions}` : ""}`).join("\n") || "- (no services listed)";
+  const services = facts.treatments.map((t) => `- ${t.name}: ${servicePriceLabel(t)}${t.duration ? `, about ${t.duration} min` : ""}${t.availability ? `, ${t.availability}` : ""}${t.booking_instructions ? `. Note: ${t.booking_instructions}` : ""}${t.description ? `. About: ${String(t.description).replace(/\s+/g, " ").slice(0, 220)}` : ""}`).join("\n") || "- (no services listed)";
+  // The fee set in Treatments is the real one; the profile value is only a fallback.
+  const consultation = facts.treatments.find((t) => /consultation/i.test(t.name));
+  const fee = consultation ? servicePriceLabel(consultation) : `PKR ${clinicProfile.consultationFee.toLocaleString("en-PK")}`;
   const offers = facts.promotions.map((p) => `- ${p.name}: ${p.service} PKR ${Number(p.offer_price).toLocaleString("en-PK")} (was PKR ${Number(p.original_price).toLocaleString("en-PK")}), until ${p.expiry_date}`).join("\n") || "- none right now";
   return `CLINIC FACTS (verified):
 Clinic: ${clinicProfile.name}. Doctor: ${clinicProfile.doctor}, ${clinicProfile.qualifications}, ${clinicProfile.designation}.
 Timing: ${clinicProfile.hours} (appointments every ${SLOT} minutes from 5:00 PM, last slot 9:45 PM).
 Address: ${clinicProfile.address}. Phone: ${clinicProfile.phone}, landline ${clinicProfile.landline}.
-Consultation fee: PKR ${clinicProfile.consultationFee.toLocaleString("en-PK")}.
+Consultation fee: ${fee}.
 Services and prices:
 ${services}
 Active offers:
@@ -64,9 +68,12 @@ ${history.map((m) => `${m.direction === "IN" ? "Patient" : "Clinic"}: ${m.conten
 function matchService(name: string | null | undefined, treatments: Treatment[]) {
   if (!name) return null;
   const n = name.toLowerCase().replace(/[^a-z0-9]/g, "");
-  return treatments.find((t) => t.name.toLowerCase().replace(/[^a-z0-9]/g, "") === n)
-    ?? treatments.find((t) => { const tn = t.name.toLowerCase().replace(/[^a-z0-9]/g, ""); return tn.includes(n) || n.includes(tn); })
-    ?? null;
+  if (!n) return null;
+  const exact = treatments.find((t) => t.name.toLowerCase().replace(/[^a-z0-9]/g, "") === n);
+  if (exact) return exact;
+  // A partial name that fits several treatments ("facial") is ambiguous: ask instead of guessing.
+  const partial = treatments.filter((t) => { const tn = t.name.toLowerCase().replace(/[^a-z0-9]/g, ""); return tn.includes(n) || n.includes(tn); });
+  return partial.length === 1 ? partial[0] : null;
 }
 
 async function freeSlots(db: D1Database, date: string, from: string, excludeId?: string) {
@@ -106,12 +113,35 @@ function templateReply(result: {kind: string; text?: string}) {
   return result.text || "Ji, aap ka message mil gaya hai. Hamari team jald aap se rabta karegi.";
 }
 
+/** Picks the appointment the patient means by name or by its current date. */
+function pickAppointment(list: Appointment[], text: string, a: Analysis) {
+  const lower = text.toLowerCase();
+  const byName = list.filter((x) => x.patient_name && lower.includes(x.patient_name.toLowerCase().split(/\s+/)[0]));
+  if (byName.length === 1) return byName[0];
+  const mentioned = parseAllDates(text);
+  const byDate = list.filter((x) => mentioned.includes(x.appointment_date) && x.appointment_date !== a.date);
+  return byDate.length === 1 ? byDate[0] : null;
+}
+
 export async function handleTurn(db: D1Database, cfg: GeminiConfig, contact: Contact, turn: string): Promise<TurnResult> {
   const facts = await loadFacts(db);
   const appointments = await upcoming(db, contact.contact_key);
   const context = await contextText(db, contact, facts, appointments);
   const a: Analysis = await analyze(cfg, context, turn);
   const draft: Draft = {...contact.draft};
+  // Check the AI's reading against the patient's own words.
+  const plain = turn.replace(/^\[Message \d+\]\s*/gm, "").replace(/\[Voice note\]\s*/g, "");
+  const serviceNames = facts.treatments.map((t) => t.name);
+  const existingDates = new Set(appointments.map((x) => x.appointment_date));
+  const written = parseAllDates(plain), writtenTime = parseTime(plain);
+  // While rescheduling, the new date is the one that is not an existing appointment's date.
+  const writtenDate = a.intent === "RESCHEDULE" ? ([...written].reverse().find((d) => !existingDates.has(d)) ?? null) : (written[0] ?? null);
+  if (writtenDate) a.date = writtenDate; // the patient's own words win (Pakistan writes day first)
+  if (writtenTime) a.time = writtenTime;
+  let name = cleanName(a.patient_name, serviceNames);
+  if (name && !nameAppearsIn(name, plain)) name = null; // never assume the WhatsApp profile name
+  if (!name && draft.active && draft.lastAsked === "patientName" && !writtenDate && !writtenTime && !plain.includes("\n")) name = cleanName(plain, serviceNames);
+  a.patient_name = name;
   let backend = "NO_ACTION: just answer the patient's question(s) from the clinic facts.";
   let fallback = "";
   let handover: string | null = null;
@@ -142,8 +172,11 @@ export async function handleTurn(db: D1Database, cfg: GeminiConfig, contact: Con
       backend = `CONFIRM_CANCEL: ask the patient to confirm cancelling ${target.patient_name}'s ${target.service} appointment on ${fmtDate(target.appointment_date)} at ${fmt12(target.appointment_time)}.`;
       fallback = `${target.patient_name} ki ${fmtDate(target.appointment_date)} ${fmt12(target.appointment_time)} wali appointment cancel kar dein? Confirm karne ke liye "haan" likh dein.`;
     }
+  } else if (a.intent === "RESCHEDULE" && appointments.length > 1 && !pickAppointment(appointments, plain, a)) {
+    backend = `MULTIPLE_APPOINTMENTS: ask which appointment to move (patient name or current date). Options:\n${appointments.map((x) => `- ${x.patient_name}, ${x.service}, ${fmtDate(x.appointment_date)} ${fmt12(x.appointment_time)}`).join("\n")}`;
+    fallback = `Is number par ${appointments.length} appointments hain. Kis patient ki ya kis date wali appointment shift karni hai?`;
   } else if (a.intent === "RESCHEDULE" && appointments.length) {
-    const target = appointments[0];
+    const target = appointments.length === 1 ? appointments[0] : pickAppointment(appointments, plain, a)!;
     const date = a.date || draft.date, time = a.time || draft.time;
     if (!date || !time) {
       draft.date = date ?? undefined; draft.time = time ?? undefined;
@@ -204,6 +237,12 @@ export async function handleTurn(db: D1Database, cfg: GeminiConfig, contact: Con
         for (const k of Object.keys(draft) as Array<keyof Draft>) delete draft[k];
       }
     }
+  } else if (a.intent === "PRICE_QUESTION" || a.intent === "INFO_QUESTION" || a.intent === "MEDICAL_CONCERN") {
+    const asked = matchService(a.service_name, facts.treatments) ?? facts.treatments.find((t) => plain.toLowerCase().includes(t.name.toLowerCase()));
+    const consult = `End by saying ${DOCTOR} will guide better after seeing the skin in a consultation and invite them to book one.`;
+    if (a.intent === "MEDICAL_CONCERN") backend = `MEDICAL_QUESTION: show care, do not diagnose or prescribe. ${consult}`;
+    else if (asked) backend = `SERVICE_FACT: ${asked.name} costs exactly ${servicePriceLabel(asked)}${asked.duration ? `, about ${asked.duration} min` : ""}.${asked.description ? ` About: ${String(asked.description).slice(0, 220)}.` : ""} Answer what was asked briefly. If they asked what it is or its benefits, give one or two general lines, then: ${consult}`;
+    else backend = `NO_ACTION: answer from the clinic facts. If they ask about a treatment that is not in the list, give one general line about it and say its suitability and price are decided by ${DOCTOR} in consultation. ${consult}`;
   } else if (a.intent === "THANKS_BYE") {
     backend = "CLOSING: reply with one short polite closing line. Do not ask any question.";
   }
