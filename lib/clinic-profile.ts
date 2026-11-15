@@ -1,3 +1,9 @@
 export const clinicProfile={name:'Skinuvia',doctor:'Dr. Aamina Iqbal',qualifications:'M.B.B.S., F.C.P.S. (Dermatology)',designation:'Consultant Dermatologist & Cosmetologist',urduName:'ڈاکٹر آمنہ اقبال',urduQualifications:'ایم بی بی ایس، ایف سی پی ایس (ڈرماٹولوجی)',urduDesignation:'ماہر امراض جلد و کاسمیٹولوجسٹ',consultationFee:2000,hours:'5:00 pm to 10:00 pm',address:'Suraj Miani Road, Chungi No. 1, Multan',phone:'0334-9218266',landline:'061-4506038',timezone:'Asia/Karachi'};
 export type ServicePrice={price?:unknown;price_max?:unknown;pricing_type?:unknown;description?:unknown};
 export function servicePriceLabel(service:ServicePrice|Record<string,unknown>){const base=Number(service.price||0).toLocaleString('en-PK'),maximum=Number(service.price_max||0);const label=service.pricing_type==='Starting from'?`From PKR ${base}`:service.pricing_type==='Range'&&maximum>Number(service.price)?`PKR ${base}–${maximum.toLocaleString('en-PK')}`:`PKR ${base}`;return label+(/\bper session\b/i.test(String(service.description||''))?' / session':'');}
+
+/** Working days and location shared by the WhatsApp receptionist. */
+export const clinicSchedule={workingDays:'Monday to Friday',closedDays:[0,6],closedLabel:'Saturday and Sunday',closedLabelUrdu:'Hafta aur Itwar',mapsUrl:'https://maps.google.com/?q=Skinuvia+Clinic+Suraj+Miani+Road+Chungi+No+1+Multan'};
+const shiftDay=(date:string,days:number)=>{const t=new Date(`${date}T12:00:00Z`);t.setUTCDate(t.getUTCDate()+days);return t.toISOString().slice(0,10);};
+export function isClosedDay(date:string){return clinicSchedule.closedDays.includes(new Date(`${date}T12:00:00Z`).getUTCDay());}
+export function nextOpenDay(date:string){let d=date;for(let i=0;i<7&&isClosedDay(d);i++)d=shiftDay(d,1);return d;}

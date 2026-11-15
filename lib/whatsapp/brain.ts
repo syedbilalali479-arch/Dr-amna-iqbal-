@@ -1,6 +1,7 @@
 // Conversation brain: Gemini understands the turn, the backend validates and performs every
 // booking action, then Gemini writes the patient reply from the verified backend result.
-import {clinicProfile, servicePriceLabel} from "../clinic-profile.ts";
+import {clinicProfile, clinicSchedule, isClosedDay, nextOpenDay, servicePriceLabel} from "../clinic-profile.ts";
+import {confirmationMessage} from "./messages.ts";
 import {pakistanParts} from "../pakistan-time.ts";
 import {saveAppointment} from "../appointment-booking.ts";
 import {analyze, writeReply, type Analysis, type GeminiConfig, type Language} from "./gemini.ts";
@@ -40,7 +41,8 @@ function factsText(facts: Awaited<ReturnType<typeof loadFacts>>) {
   const offers = facts.promotions.map((p) => `- ${p.name}: ${p.service} PKR ${Number(p.offer_price).toLocaleString("en-PK")} (was PKR ${Number(p.original_price).toLocaleString("en-PK")}), until ${p.expiry_date}`).join("\n") || "- none right now";
   return `CLINIC FACTS (verified):
 Clinic: ${clinicProfile.name}. Doctor: ${clinicProfile.doctor}, ${clinicProfile.qualifications}, ${clinicProfile.designation}.
-Timing: ${clinicProfile.hours} (appointments every ${SLOT} minutes from 5:00 PM, last slot 9:45 PM).
+Open ${clinicSchedule.workingDays}, ${clinicProfile.hours} (appointments every ${SLOT} minutes from 5:00 PM, last slot 9:45 PM). CLOSED on ${clinicSchedule.closedLabel}.
+Location (Google Maps): ${clinicSchedule.mapsUrl}
 Address: ${clinicProfile.address}. Phone: ${clinicProfile.phone}, landline ${clinicProfile.landline}.
 Consultation fee: ${fee}.
 Services and prices:
@@ -95,6 +97,7 @@ async function freeSlots(db: D1Database, date: string, from: string, excludeId?:
 function checkSlot(date: string, time: string): {ok: true; time: string; note?: string} | {ok: false; reason: string} {
   const now = pakistanParts();
   if (date < now.date) return {ok: false, reason: `DATE_IN_PAST: ${date} has already passed. Ask for a future date.`};
+  if (isClosedDay(date)) { const open = nextOpenDay(date); return {ok: false, reason: `CLOSED_DAY: the clinic is closed on ${clinicSchedule.closedLabel}; ${fmtDate(date)} is a closed day. Suggest ${fmtDate(open)} (${open}) or another day from Monday to Friday.`}; }
   let m = toMin(time);
   let note: string | undefined;
   if (m % SLOT) { const rounded = Math.round(m / SLOT) * SLOT; note = `Requested ${fmt12(time)} adjusted to ${fmt12(toTime(rounded))} (slots are every ${SLOT} minutes).`; m = rounded; }
@@ -146,6 +149,7 @@ export async function handleTurn(db: D1Database, cfg: GeminiConfig, contact: Con
   let fallback = "";
   let handover: string | null = null;
   let appointmentId: string | undefined;
+  let confirmation: string | null = null;
 
   if (a.medical_urgency) {
     handover = "MEDICAL_URGENCY";
@@ -210,11 +214,15 @@ export async function handleTurn(db: D1Database, cfg: GeminiConfig, contact: Con
     let rejected = "";
     if (draft.date && draft.time) {
       const slot = checkSlot(draft.date, draft.time);
-      if (!slot.ok) { rejected = slot.reason; if (slot.reason.startsWith("DATE_IN_PAST")) draft.date = undefined; else draft.time = undefined; }
+      if (!slot.ok) { rejected = slot.reason; if (/^(DATE_IN_PAST|CLOSED_DAY)/.test(slot.reason)) draft.date = undefined; else draft.time = undefined; }
       else draft.time = slot.time;
     }
     const missing = missingOf(draft);
-    if (rejected) backend = `BOOKING_NOT_POSSIBLE: ${rejected} Known details: ${JSON.stringify(draft)}.`;
+    if (!rejected && draft.date && isClosedDay(draft.date)) { const open = nextOpenDay(draft.date); rejected = `CLOSED_DAY: the clinic is closed on ${clinicSchedule.closedLabel}; ${fmtDate(draft.date)} is a closed day. Suggest ${fmtDate(open)} (${open}) or another day from Monday to Friday.`; draft.date = undefined; }
+    if (rejected) {
+      backend = `BOOKING_NOT_POSSIBLE: ${rejected} Known details: ${JSON.stringify(draft)}.`;
+      if (rejected.startsWith("CLOSED_DAY")) fallback = `Clinic ${clinicSchedule.closedLabelUrdu} band hota hai. Peer se Jumma tak shaam 5 se raat 10 baje tak appointment mil sakti hai, koi aur din batayein.`;
+    }
     else if (missing.length) {
       const ask = missing[0];
       draft.askedCount = draft.lastAsked === ask ? (draft.askedCount || 0) + 1 : 1;
@@ -232,8 +240,8 @@ export async function handleTurn(db: D1Database, cfg: GeminiConfig, contact: Con
         const service = facts.treatments.find((t) => t.name === draft.service);
         const saved = await saveAppointment(db, "whatsapp-ai", {request_id: crypto.randomUUID(), record: {patient_name: draft.patientName, phone: contact.contact_key, service: draft.service, appointment_date: draft.date, appointment_time: draft.time, source: "WhatsApp AI", price: service?.price || 0, notes: "Booked by WhatsApp AI receptionist"}});
         appointmentId = String(saved.appointment?.id || "");
-        backend = `CONFIRMED: appointment booked for ${draft.patientName}, ${draft.service}, ${fmtDate(draft.date!)} at ${fmt12(draft.time!)} with ${DOCTOR}. ${service ? `Price: ${servicePriceLabel(service)}.` : ""} Ask them to arrive 10 minutes early.`;
-        fallback = `Ji, ${draft.patientName} ki ${draft.service} appointment ${fmtDate(draft.date!)} ko ${fmt12(draft.time!)} par confirm ho gayi hai. Please 10 minute pehle tashreef le aayein.`;
+        backend = "CONFIRMED";
+        confirmation = confirmationMessage({patientName: draft.patientName!, service: draft.service!, date: draft.date!, time: draft.time!, price: service ? servicePriceLabel(service) : null, language: a.language});
         for (const k of Object.keys(draft) as Array<keyof Draft>) delete draft[k];
       }
     }
@@ -243,9 +251,14 @@ export async function handleTurn(db: D1Database, cfg: GeminiConfig, contact: Con
     if (a.intent === "MEDICAL_CONCERN") backend = `MEDICAL_QUESTION: show care, do not diagnose or prescribe. ${consult}`;
     else if (asked) backend = `SERVICE_FACT: ${asked.name} costs exactly ${servicePriceLabel(asked)}${asked.duration ? `, about ${asked.duration} min` : ""}.${asked.description ? ` About: ${String(asked.description).slice(0, 220)}.` : ""} Answer what was asked briefly. If they asked what it is or its benefits, give one or two general lines, then: ${consult}`;
     else backend = `NO_ACTION: answer from the clinic facts. If they ask about a treatment that is not in the list, give one general line about it and say its suitability and price are decided by ${DOCTOR} in consultation. ${consult}`;
+  } else if (a.intent === "THANKS_BYE" && !draft.active && !draft.pendingCancelId) {
+    // A closing ("ok", "shukriya", "Allah hafiz") ends the chat: no reply, so the bot never loops.
+    return {reply: null, intent: a.intent, language: a.language, draft, handover: null};
   } else if (a.intent === "THANKS_BYE") {
     backend = "CLOSING: reply with one short polite closing line. Do not ask any question.";
   }
+  // The booking confirmation is a fixed, well-formatted message with the clinic location.
+  if (confirmation) return {reply: confirmation, intent: a.intent, language: a.language, draft, handover, appointmentId};
 
   let reply: string;
   try { reply = await writeReply(cfg, clinicProfile.name, DOCTOR, context, turn, backend); }

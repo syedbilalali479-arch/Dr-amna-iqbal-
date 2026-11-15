@@ -13,7 +13,17 @@ const intentRules:{intent:Intent;terms:RegExp[]}[]=[
  {intent:"greeting",terms:[/^(hi|hello|hey|salam|aoa|assalam)/i]}
 ];
 export function deterministicClassify(message:string):Classification{for(const rule of intentRules)if(rule.terms.some(r=>r.test(message)))return {intent:rule.intent,confidence:.98,route:"deterministic",matched:rule.terms.filter(r=>r.test(message)).map(String)};return {intent:"other",confidence:0,route:"clarify",matched:[]}}
-export function findTreatment(message:string,treatments:Treatment[]){const words=new Set(normalizeMessage(message).replace(/hydrafacial/g,"hydra facial").split(" "));let best:{item:Treatment;score:number}|null=null;for(const item of treatments){const parts=normalizeMessage(item.name).split(" ").filter(w=>w.length>2);const overlap=parts.filter(w=>words.has(w)).length;const score=parts.length?overlap/parts.length:0;if(overlap&&(!best||score>best.score))best={item,score}}return best&&best.score>=.45?best.item:undefined}
+/** Treatments the message fits best; several means the patient must choose (e.g. "hydra facial"). */
+export function treatmentMatches(message:string,treatments:Treatment[]){
+ const words=new Set(normalizeMessage(message).replace(/hydrafacial/g,"hydra facial").split(" "));
+ const scored=treatments.map(item=>{const parts=[...new Set(normalizeMessage(item.name).split(" ").filter(w=>w.length>2))];const hit=parts.filter(w=>words.has(w)).length;return {item,hit,full:parts.length>0&&hit===parts.length}}).filter(x=>x.hit>0);
+ if(!scored.length)return [];
+ const top=Math.max(...scored.map(x=>x.hit)),best=scored.filter(x=>x.hit===top),full=best.filter(x=>x.full);
+ // A name the patient wrote in full wins; otherwise every equally good match is an option.
+ if(full.length===1)return [full[0].item];
+ return best.map(x=>x.item);
+}
+export function findTreatment(message:string,treatments:Treatment[]){const list=treatmentMatches(message,treatments);return list.length===1?list[0]:undefined}
 export function extractFields(message:string,name:string|undefined,treatments:Treatment[],now=new Date()):KnownFields{
  // Dates are day-first (Pakistan); a past date or a time already gone today is not kept.
  const today=pakistanParts(now);const date=parseAllDates(message,now)[0];let time=parseTime(message)||undefined;

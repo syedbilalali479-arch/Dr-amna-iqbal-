@@ -25,3 +25,10 @@ test('only real names are accepted as patient names',()=>{
  for(const v of ['kal','kal 7 baje','haan','ok','theek hai','18/11','Hydra Facial','facial','appointment chahiye','kitni fees hai','monday','November','Assalam o Alaikum','',null,'yeh bahut lamba sentence hai jo naam nahi hai'])assert.equal(cleanName(v as string,services),null,String(v));
  assert.equal(nameAppearsIn('Ali Khan','mera naam ali khan hai'),true);assert.equal(nameAppearsIn('Bilal','kal 7 baje'),false);
 });
+import {isClosingOnly,confirmationMessage} from '../lib/whatsapp/messages.ts';
+test('closing-only messages are recognised; real messages are not',()=>{
+ for(const t of ['ok','Ok 👍','okk','theek hai','thik h','acha','ji','Ji theek hai','thanks','Thank you sir','shukriya','bohat shukriya','JazakAllah','jazakallah khair','Allah Hafiz','ok thanks','ok jazakallah allah hafiz','👍','🙏🌸','bye','شکریہ','جزاک اللہ','done'])assert.equal(isClosingOnly(t),true,t);
+ for(const t of ['ok kal 7 baje','thanks, fees kitni hai?','theek hai appointment book kar dein','Ayesha','cancel kar dein','report bhej rahi hoon','haan cancel kar do'])assert.equal(isClosingOnly(t),false,t);
+});
+test('confirmation message has emojis, details and the location',()=>{const m=confirmationMessage({patientName:'Ayesha',service:'Hydra Facial',date:'2026-11-18',time:'19:00',price:'PKR 5,000'});
+ for(const part of ['✅','👤 *Patient:* Ayesha','💆 *Service:* Hydra Facial','📅 *Date:* Wednesday, 18 November 2026','⏰ *Time:* 7:00 PM','💰 *Fee:* PKR 5,000','📍','🗺️ *Location:* https://maps.google.com/','📞'])assert.ok(m.includes(part),part);});

@@ -11,6 +11,7 @@ import {parseWebhook, type InboundItem} from "./payload.ts";
 import {handleTurn, type Contact, type Draft} from "./brain.ts";
 import {transcribe, type GeminiConfig, type Language} from "./gemini.ts";
 import {forwardedReply, savePatientDocument} from "./media.ts";
+import {isClosingOnly} from "./messages.ts";
 
 const CLINIC = "skinuvia";
 const BASE = "https://www.wasenderapi.com/api";
@@ -202,6 +203,16 @@ async function handleBatch(key: string, items: Array<Record<string, string>>) {
     return;
   }
 
+  // "ok", "shukriya", "Allah hafiz", 👍 after the chat is done: stay silent so the bot never loops.
+  // Not when the clinic just asked a question or a booking/cancel is waiting for an answer.
+  if (messages.length && messages.every((i) => i.kind === "text") && texts.every(isClosingOnly) && !contact.draft.active && !contact.draft.pendingCancelId) {
+    const lastOut = await db().prepare("SELECT content FROM whatsapp_messages WHERE clinic_id=? AND contact_key=? AND direction='OUT' ORDER BY created_at DESC, rowid DESC LIMIT 1").bind(CLINIC, key).first<{content: string}>();
+    if (!lastOut || !/[?؟]\s*$/.test(lastOut.content.trim())) {
+      await upsertConversation(contact, turn, "thanks_bye", contact.mode === "Human" ? "Human" : "AI", false, {draft: contact.draft});
+      log({contact: mask(key), stage: "skip", reason: "closing message, no reply needed"});
+      return;
+    }
+  }
   let reply: string | null = null, intent = "OTHER", language = contact.language, draft = contact.draft, handover: string | null | undefined = null, route = "gemini";
   if (cfg) {
     try { ({reply, intent, language, draft, handover} = await handleTurn(db(), cfg, contact, turn)); }
