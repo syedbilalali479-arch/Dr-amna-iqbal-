@@ -23,7 +23,7 @@ const last=()=>backends[backends.length-1];
 test('day-first date wins over a misread AI date and books correctly',async()=>{const db=setup();const target=wd(5);const [y,m,d]=target.split('-');
  next={intent:'BOOKING_REQUEST',patient_name:'Ayesha Khan',service_name:'Hydra Facial',date:`${y}-${d}-${m}`,time:'07:00'};
  const r=await handleTurn(D(db),cfg,contact(),`mera naam Ayesha Khan hai, Hydra Facial ${dm(target)} ko 7 baje`);
- assert.match(r.reply!,/✅[\s\S]*Ayesha Khan[\s\S]*Hydra Facial[\s\S]*7:00 PM[\s\S]*PKR 5,000[\s\S]*📍[\s\S]*maps\.google\.com/);const a=db.connection.prepare('SELECT * FROM appointments').get() as Record<string,unknown>;
+ assert.match(r.reply!,/✅[\s\S]*Ayesha Khan[\s\S]*Hydra Facial[\s\S]*7:00 PM[\s\S]*PKR 5,000[\s\S]*📍[\s\S]*share\.google\/KupgfrvDeR9TlchkW/);const a=db.connection.prepare('SELECT * FROM appointments').get() as Record<string,unknown>;
  assert.equal(a.appointment_date,target);assert.equal(a.appointment_time,'19:00');assert.equal(a.patient_name,'Ayesha Khan');assert.equal(a.service,'Hydra Facial');assert.equal(a.price,5000);assert.equal(a.status,'Awaiting Payment');assert.equal(a.source,'WhatsApp AI');assert.ok(r.appointmentId);});
 
 test('words, dates and the profile name are never taken as the patient name',async()=>{const db=setup();

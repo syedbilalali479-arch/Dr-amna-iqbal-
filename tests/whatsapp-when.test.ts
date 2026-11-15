@@ -31,4 +31,4 @@ test('closing-only messages are recognised; real messages are not',()=>{
  for(const t of ['ok kal 7 baje','thanks, fees kitni hai?','theek hai appointment book kar dein','Ayesha','cancel kar dein','report bhej rahi hoon','haan cancel kar do'])assert.equal(isClosingOnly(t),false,t);
 });
 test('confirmation message has emojis, details and the location',()=>{const m=confirmationMessage({patientName:'Ayesha',service:'Hydra Facial',date:'2026-11-18',time:'19:00',price:'PKR 5,000'});
- for(const part of ['✅','👤 *Patient:* Ayesha','💆 *Service:* Hydra Facial','📅 *Date:* Wednesday, 18 November 2026','⏰ *Time:* 7:00 PM','💰 *Fee:* PKR 5,000','📍','🗺️ *Location:* https://maps.google.com/','📞'])assert.ok(m.includes(part),part);});
+ for(const part of ['✅','👤 *Patient:* Ayesha','💆 *Service:* Hydra Facial','📅 *Date:* Wednesday, 18 November 2026','⏰ *Time:* 7:00 PM','💰 *Fee:* PKR 5,000','📍','🗺️ *Location:* https://share.google/KupgfrvDeR9TlchkW','📞'])assert.ok(m.includes(part),part);});

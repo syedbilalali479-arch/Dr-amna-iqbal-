@@ -3,7 +3,7 @@ export type ServicePrice={price?:unknown;price_max?:unknown;pricing_type?:unknow
 export function servicePriceLabel(service:ServicePrice|Record<string,unknown>){const base=Number(service.price||0).toLocaleString('en-PK'),maximum=Number(service.price_max||0);const label=service.pricing_type==='Starting from'?`From PKR ${base}`:service.pricing_type==='Range'&&maximum>Number(service.price)?`PKR ${base}–${maximum.toLocaleString('en-PK')}`:`PKR ${base}`;return label+(/\bper session\b/i.test(String(service.description||''))?' / session':'');}
 
 /** Working days and location shared by the WhatsApp receptionist. */
-export const clinicSchedule={workingDays:'Monday to Friday',closedDays:[0,6],closedLabel:'Saturday and Sunday',closedLabelUrdu:'Hafta aur Itwar',mapsUrl:'https://maps.google.com/?q=Skinuvia+Clinic+Suraj+Miani+Road+Chungi+No+1+Multan'};
+export const clinicSchedule={workingDays:'Monday to Friday',closedDays:[0,6],closedLabel:'Saturday and Sunday',closedLabelUrdu:'Hafta aur Itwar',mapsUrl:'https://share.google/KupgfrvDeR9TlchkW'};
 const shiftDay=(date:string,days:number)=>{const t=new Date(`${date}T12:00:00Z`);t.setUTCDate(t.getUTCDate()+days);return t.toISOString().slice(0,10);};
 export function isClosedDay(date:string){return clinicSchedule.closedDays.includes(new Date(`${date}T12:00:00Z`).getUTCDay());}
 export function nextOpenDay(date:string){let d=date;for(let i=0;i<7&&isClosedDay(d);i++)d=shiftDay(d,1);return d;}
