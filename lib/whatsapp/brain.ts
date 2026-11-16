@@ -20,6 +20,8 @@ type Appointment = {id: string; patient_name: string; service: string; appointme
 const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 const toTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 const fmt12 = (t: string) => { const m = toMin(t), h = Math.floor(m / 60) % 12 || 12; return `${h}:${String(m % 60).padStart(2, "0")} ${m >= 720 ? "PM" : "AM"}`; };
+/** A service's price only when the clinic has actually set one; 0 / blank means "decided in consultation". */
+const knownPrice = (t: Treatment | undefined | null) => (t && Number(t.price) > 0 ? servicePriceLabel(t) : null);
 const fmtDate = (d: string) => new Intl.DateTimeFormat("en-PK", {timeZone: "Asia/Karachi", weekday: "long", day: "numeric", month: "long"}).format(new Date(`${d}T12:00:00+05:00`));
 
 async function loadFacts(db: D1Database) {
@@ -34,10 +36,10 @@ async function upcoming(db: D1Database, phone: string): Promise<Appointment[]> {
 }
 
 function factsText(facts: Awaited<ReturnType<typeof loadFacts>>) {
-  const services = facts.treatments.map((t) => `- ${t.name}: ${servicePriceLabel(t)}${t.duration ? `, about ${t.duration} min` : ""}${t.availability ? `, ${t.availability}` : ""}${t.booking_instructions ? `. Note: ${t.booking_instructions}` : ""}${t.description ? `. About: ${String(t.description).replace(/\s+/g, " ").slice(0, 220)}` : ""}`).join("\n") || "- (no services listed)";
+  const services = facts.treatments.map((t) => `- ${t.name}: ${knownPrice(t) ?? "price not listed (decided by the doctor in consultation)"}${t.duration ? `, about ${t.duration} min` : ""}${t.availability ? `, ${t.availability}` : ""}${t.booking_instructions ? `. Note: ${t.booking_instructions}` : ""}${t.description ? `. About: ${String(t.description).replace(/\s+/g, " ").slice(0, 220)}` : ""}`).join("\n") || "- (no services listed)";
   // The fee set in Treatments is the real one; the profile value is only a fallback.
   const consultation = facts.treatments.find((t) => /consultation/i.test(t.name));
-  const fee = consultation ? servicePriceLabel(consultation) : `PKR ${clinicProfile.consultationFee.toLocaleString("en-PK")}`;
+  const fee = knownPrice(consultation) ?? `PKR ${clinicProfile.consultationFee.toLocaleString("en-PK")}`;
   const offers = facts.promotions.map((p) => `- ${p.name}: ${p.service} PKR ${Number(p.offer_price).toLocaleString("en-PK")} (was PKR ${Number(p.original_price).toLocaleString("en-PK")}), until ${p.expiry_date}`).join("\n") || "- none right now";
   return `CLINIC FACTS (verified):
 Clinic: ${clinicProfile.name}. Doctor: ${clinicProfile.doctor}, ${clinicProfile.qualifications}, ${clinicProfile.designation}.
@@ -67,16 +69,24 @@ RECENT CONVERSATION (oldest first):
 ${history.map((m) => `${m.direction === "IN" ? "Patient" : "Clinic"}: ${m.content}`).join("\n") || "(new conversation)"}`;
 }
 
-function matchService(name: string | null | undefined, treatments: Treatment[]) {
-  if (!name) return null;
-  const n = name.toLowerCase().replace(/[^a-z0-9]/g, "");
-  if (!n) return null;
+function findService(name: string | null | undefined, treatments: Treatment[]): {service: Treatment | null; ambiguous: boolean} {
+  const n = (name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!n) return {service: null, ambiguous: false};
   const exact = treatments.find((t) => t.name.toLowerCase().replace(/[^a-z0-9]/g, "") === n);
-  if (exact) return exact;
+  if (exact) return {service: exact, ambiguous: false};
   // A partial name that fits several treatments ("facial") is ambiguous: ask instead of guessing.
   const partial = treatments.filter((t) => { const tn = t.name.toLowerCase().replace(/[^a-z0-9]/g, ""); return tn.includes(n) || n.includes(tn); });
-  return partial.length === 1 ? partial[0] : null;
+  return {service: partial.length === 1 ? partial[0] : null, ambiguous: partial.length > 1};
 }
+const matchService = (name: string | null | undefined, treatments: Treatment[]) => findService(name, treatments).service;
+
+/** The default booking when the patient names no service: a consultation with the doctor. */
+function consultationService(treatments: Treatment[]) {
+  return treatments.find((t) => /^skin consultation$/i.test(t.name)) ?? treatments.find((t) => /consultation/i.test(t.name)) ?? null;
+}
+
+/** Medicine / prescription questions are for the doctor only; the receptionist never names a medicine. */
+const MEDICINE_WORDS = /\b(dawai|dawaai|dawa|dwai|medicine|medicines|medication|tablet|tablets|goli|golian|goliyan|capsule|syrup|injection|ointment|cream|creams|serum|sunblock|sunscreen|antibiotic|dose|dosage|prescribe|prescription|nuskha|nuskhe)\b|دوا|دوائی|گولی|کریم|نسخہ/i;
 
 async function freeSlots(db: D1Database, date: string, from: string, excludeId?: string) {
   const taken = new Set((await db.prepare("SELECT appointment_time FROM appointments WHERE clinic_id=? AND appointment_date=? AND doctor=? AND status NOT IN ('Cancelled','Rescheduled') AND id<>?").bind(CLINIC, date, DOCTOR, excludeId || "").all<{appointment_time: string}>()).results.map((r) => r.appointment_time));
@@ -92,6 +102,31 @@ async function freeSlots(db: D1Database, date: string, from: string, excludeId?:
   const alternatives = free.sort((x, y) => Math.abs(x - target) - Math.abs(y - target) || x - y).slice(0, 3).sort((x, y) => x - y).map(toTime);
   return {taken, alternatives};
 }
+
+/** First free slot after the requested (taken) time; if that day is full, the earliest slot on the next open days. */
+async function nextFreeSlot(db: D1Database, date: string, time: string, excludeId?: string): Promise<{date: string; time: string} | null> {
+  let day = date, after = toMin(time);
+  for (let i = 0; i < 14; i++) {
+    if (!isClosedDay(day)) {
+      const {taken} = await freeSlots(db, day, OPEN, excludeId);
+      const now = pakistanParts();
+      for (let m = Math.max(toMin(OPEN), after); m + SLOT <= toMin(CLOSE); m += SLOT) {
+        if (taken.has(toTime(m)) || (day === now.date && m <= toMin(now.time))) continue;
+        return {date: day, time: toTime(m)};
+      }
+    }
+    const t = new Date(`${day}T12:00:00Z`); t.setUTCDate(t.getUTCDate() + 1); day = t.toISOString().slice(0, 10);
+    after = toMin(OPEN);
+  }
+  return null;
+}
+
+const movedNote = (fromDate: string, fromTime: string, toDate: string, toTime: string, language: Language) => {
+  const when = fromDate === toDate ? fmt12(toTime) : `${fmtDate(toDate)} ${fmt12(toTime)}`;
+  return language === "ENGLISH"
+    ? `ℹ️ ${fmt12(fromTime)} on ${fmtDate(fromDate)} was already booked, so the next available slot (${when}) has been booked for you. Reply if you want another time.\n\n`
+    : `ℹ️ ${fmtDate(fromDate)} ${fmt12(fromTime)} ka slot pehle se booked tha, is liye agla available slot (${when}) book kar diya gaya hai. Koi aur time chahiye to bata dein.\n\n`;
+};
 
 /** Checks date/time rules. Returns a normalised time or a reason it cannot be booked. */
 function checkSlot(date: string, time: string): {ok: true; time: string; note?: string} | {ok: false; reason: string} {
@@ -155,6 +190,10 @@ export async function handleTurn(db: D1Database, cfg: GeminiConfig, contact: Con
     handover = "MEDICAL_URGENCY";
     backend = `MEDICAL_URGENCY: show care, advise them to seek immediate medical attention if symptoms are severe, and say the clinic team / ${DOCTOR} has been informed and will contact them.`;
     fallback = `Ji, aap ki takleef ka sun kar afsos hua. Agar symptoms zyada hain to foran qareebi hospital/emergency se rabta karein. Main ne ${DOCTOR} ki team ko inform kar diya hai, woh jald aap se rabta karenge.`;
+  } else if (a.intent === "MEDICINE_QUESTION" || (["MEDICAL_CONCERN", "INFO_QUESTION", "OTHER"].includes(a.intent) && MEDICINE_WORDS.test(plain))) {
+    handover = "MEDICINE_QUESTION_FOR_DOCTOR";
+    backend = `MEDICINE_FORWARDED: the medicine / prescription question has been forwarded to ${DOCTOR}, who will reply here. Do NOT name, suggest, approve or comment on any medicine, cream, dose or prescription. One or two short sentences only.`;
+    fallback = `Ji, aap ka sawal ${DOCTOR} ko forward kar diya gaya hai. Dawai ke baare mein woh khud aap ko yahin guide karengi.`;
   } else if (a.needs_human || a.intent === "HUMAN_REQUEST") {
     handover = "PATIENT_REQUESTED_HUMAN";
     backend = "HANDOVER: tell the patient a clinic staff member has been notified and will reply here soon; they do not need to repeat themselves.";
@@ -189,16 +228,18 @@ export async function handleTurn(db: D1Database, cfg: GeminiConfig, contact: Con
       const slot = checkSlot(date, time);
       if (!slot.ok) backend = `RESCHEDULE_REJECTED: ${slot.reason}`;
       else {
-        const {taken, alternatives} = await freeSlots(db, date, slot.time, target.id);
-        if (taken.has(slot.time)) backend = `SLOT_TAKEN: ${fmtDate(date)} ${fmt12(slot.time)} is already booked. Offer these free times: ${alternatives.map(fmt12).join(", ") || "none that day; ask for another day"}.`;
+        const {taken} = await freeSlots(db, date, slot.time, target.id);
+        const next = taken.has(slot.time) ? await nextFreeSlot(db, date, slot.time, target.id) : {date, time: slot.time};
+        if (!next) backend = `SLOT_TAKEN: ${fmtDate(date)} ${fmt12(slot.time)} is already booked and no free slot was found in the next two weeks. Ask for another day.`;
         else {
           await db.batch([
-            db.prepare("UPDATE appointments SET appointment_date=?,appointment_time=?,updated_at=CURRENT_TIMESTAMP WHERE clinic_id=? AND id=?").bind(date, slot.time, CLINIC, target.id),
-            db.prepare("INSERT INTO audit_logs(id,clinic_id,actor_id,action,entity_type,entity_id,detail) VALUES(?,?,?,?,?,?,?)").bind(crypto.randomUUID(), CLINIC, "whatsapp-ai", "RESCHEDULE", "appointments", target.id, JSON.stringify({from: [target.appointment_date, target.appointment_time], to: [date, slot.time]})),
+            db.prepare("UPDATE appointments SET appointment_date=?,appointment_time=?,updated_at=CURRENT_TIMESTAMP WHERE clinic_id=? AND id=?").bind(next.date, next.time, CLINIC, target.id),
+            db.prepare("INSERT INTO audit_logs(id,clinic_id,actor_id,action,entity_type,entity_id,detail) VALUES(?,?,?,?,?,?,?)").bind(crypto.randomUUID(), CLINIC, "whatsapp-ai", "RESCHEDULE", "appointments", target.id, JSON.stringify({from: [target.appointment_date, target.appointment_time], to: [next.date, next.time]})),
           ]);
           draft.date = undefined; draft.time = undefined;
-          backend = `RESCHEDULED: ${target.patient_name}'s ${target.service} appointment moved to ${fmtDate(date)} at ${fmt12(slot.time)}.${slot.note ? " " + slot.note : ""}`;
-          fallback = `Ji, ${target.patient_name} ki appointment ${fmtDate(date)} ${fmt12(slot.time)} par shift kar di gayi hai.`;
+          const moved = next.date !== date || next.time !== slot.time;
+          backend = `RESCHEDULED: ${target.patient_name}'s ${target.service} appointment moved to ${fmtDate(next.date)} at ${fmt12(next.time)}.${moved ? ` The requested ${fmtDate(date)} ${fmt12(slot.time)} was already booked, so the next free slot was booked automatically; tell them they can ask for another time.` : slot.note ? " " + slot.note : ""}`;
+          fallback = `Ji, ${target.patient_name} ki appointment ${fmtDate(next.date)} ${fmt12(next.time)} par shift kar di gayi hai.${moved ? " Requested time pehle se booked tha, is liye agla available slot diya gaya hai." : ""}`;
         }
       }
     }
@@ -207,8 +248,10 @@ export async function handleTurn(db: D1Database, cfg: GeminiConfig, contact: Con
   } else if (a.intent === "BOOKING_REQUEST" || a.intent === "BOOKING_CONFIRMATION" || (draft.active && ["OTHER", "INFO_QUESTION"].includes(a.intent) && (a.patient_name || a.date || a.time || a.service_name))) {
     draft.active = true;
     if (a.patient_name) draft.patientName = a.patient_name;
-    const service = matchService(a.service_name, facts.treatments);
-    if (service) draft.service = service.name;
+    const found = findService(a.service_name, facts.treatments);
+    if (found.service) draft.service = found.service.name;
+    // No service named (or one we don't offer): book a consultation by default. Ambiguous names are still asked.
+    if (!draft.service && !found.ambiguous) draft.service = consultationService(facts.treatments)?.name ?? "Skin Consultation";
     if (a.date) draft.date = a.date;
     if (a.time) draft.time = a.time;
     let rejected = "";
@@ -231,26 +274,31 @@ export async function handleTurn(db: D1Database, cfg: GeminiConfig, contact: Con
       else backend = `BOOKING_DETAILS_NEEDED: still missing ${missing.map((k) => MISSING_LABEL[k]).join(", ")}. Ask ONLY for the ${MISSING_LABEL[ask]}${ask === "service" ? ` (services: ${facts.treatments.map((t) => t.name).join(", ")})` : ""}${ask === "time" ? " (5:00 PM to 9:45 PM)" : ""}. Known so far: ${JSON.stringify({name: draft.patientName, service: draft.service, date: draft.date, time: draft.time})}.`;
       fallback = ask === "patientName" ? "Appointment kis patient ke naam par book karni hai?" : ask === "service" ? "Kaunsa treatment ya service book karni hai?" : ask === "date" ? "Appointment kis date ko chahiye?" : "Kis time appointment chahiye? Clinic ki timing 5 se 10 baje shaam hai.";
     } else {
-      const {taken, alternatives} = await freeSlots(db, draft.date!, draft.time!);
-      if (taken.has(draft.time!)) {
-        backend = `SLOT_TAKEN: ${fmtDate(draft.date!)} ${fmt12(draft.time!)} is already booked. Offer these free times: ${alternatives.map(fmt12).join(", ") || "none that day; ask for another day"}. Other details are saved.`;
-        fallback = `${fmtDate(draft.date!)} ko ${fmt12(draft.time!)} ka slot available nahi hai.${alternatives.length ? ` Available: ${alternatives.map(fmt12).join(", ")}.` : " Koi aur din batayein."}`;
+      const {taken} = await freeSlots(db, draft.date!, draft.time!);
+      // The requested slot is taken: book the next free one automatically and say so.
+      const next = taken.has(draft.time!) ? await nextFreeSlot(db, draft.date!, draft.time!) : {date: draft.date!, time: draft.time!};
+      if (!next) {
+        backend = `SLOT_TAKEN: ${fmtDate(draft.date!)} ${fmt12(draft.time!)} is already booked and no free slot was found in the next two weeks. Ask for another day. Other details are saved.`;
+        fallback = `${fmtDate(draft.date!)} ko ${fmt12(draft.time!)} ka slot available nahi hai. Koi aur din batayein.`;
         draft.time = undefined;
       } else {
         const service = facts.treatments.find((t) => t.name === draft.service);
-        const saved = await saveAppointment(db, "whatsapp-ai", {request_id: crypto.randomUUID(), record: {patient_name: draft.patientName, phone: contact.contact_key, service: draft.service, appointment_date: draft.date, appointment_time: draft.time, source: "WhatsApp AI", price: service?.price || 0, notes: "Booked by WhatsApp AI receptionist"}});
+        const note = next.date !== draft.date || next.time !== draft.time ? movedNote(draft.date!, draft.time!, next.date, next.time, a.language) : "";
+        const saved = await saveAppointment(db, "whatsapp-ai", {request_id: crypto.randomUUID(), record: {patient_name: draft.patientName, phone: contact.contact_key, service: draft.service, appointment_date: next.date, appointment_time: next.time, source: "WhatsApp AI", price: service?.price || 0, notes: note ? `Booked by WhatsApp AI receptionist (requested ${draft.date} ${draft.time} was taken; next free slot booked)` : "Booked by WhatsApp AI receptionist"}});
         appointmentId = String(saved.appointment?.id || "");
         backend = "CONFIRMED";
-        confirmation = confirmationMessage({patientName: draft.patientName!, service: draft.service!, date: draft.date!, time: draft.time!, price: service ? servicePriceLabel(service) : null, language: a.language});
+        confirmation = note + confirmationMessage({patientName: draft.patientName!, service: draft.service!, date: next.date, time: next.time, price: knownPrice(service), language: a.language});
         for (const k of Object.keys(draft) as Array<keyof Draft>) delete draft[k];
       }
     }
   } else if (a.intent === "PRICE_QUESTION" || a.intent === "INFO_QUESTION" || a.intent === "MEDICAL_CONCERN") {
     const asked = matchService(a.service_name, facts.treatments) ?? facts.treatments.find((t) => plain.toLowerCase().includes(t.name.toLowerCase()));
-    const consult = `End by saying ${DOCTOR} will guide better after seeing the skin in a consultation and invite them to book one.`;
-    if (a.intent === "MEDICAL_CONCERN") backend = `MEDICAL_QUESTION: show care, do not diagnose or prescribe. ${consult}`;
-    else if (asked) backend = `SERVICE_FACT: ${asked.name} costs exactly ${servicePriceLabel(asked)}${asked.duration ? `, about ${asked.duration} min` : ""}.${asked.description ? ` About: ${String(asked.description).slice(0, 220)}.` : ""} Answer what was asked briefly. If they asked what it is or its benefits, give one or two general lines, then: ${consult}`;
-    else backend = `NO_ACTION: answer from the clinic facts. If they ask about a treatment that is not in the list, give one general line about it and say its suitability and price are decided by ${DOCTOR} in consultation. ${consult}`;
+    const consult = `End with one short line: ${DOCTOR} will guide better in a consultation; invite them to book one.`;
+    const price = knownPrice(asked);
+    if (a.intent === "MEDICAL_CONCERN") backend = `MEDICAL_QUESTION: show care in one line, do not diagnose and never name or suggest any medicine, cream or dose. ${consult}`;
+    else if (asked && price) backend = `SERVICE_FACT: ${asked.name} costs exactly ${price}${asked.duration ? `, about ${asked.duration} min` : ""}.${asked.description ? ` About: ${String(asked.description).slice(0, 220)}.` : ""} Give the price, then one short line of its general benefits. ${consult}`;
+    else if (asked) backend = `SERVICE_PRICE_NOT_LISTED: ${asked.name} is offered but its price is not listed. Do NOT guess a price: say ${DOCTOR} will tell the right price/plan after a consultation.${asked.description ? ` About: ${String(asked.description).slice(0, 220)}.` : ""} Give one short line of its general benefits. ${consult}`;
+    else backend = `NO_ACTION: answer from the clinic facts. Quote only prices written in the facts. If they ask about a treatment that is not in the list or has no listed price, do NOT guess: give one short line of its general benefits and say ${DOCTOR} will tell its suitability and price in a consultation. ${consult}`;
   } else if (a.intent === "THANKS_BYE" && !draft.active && !draft.pendingCancelId) {
     // A closing ("ok", "shukriya", "Allah hafiz") ends the chat: no reply, so the bot never loops.
     return {reply: null, intent: a.intent, language: a.language, draft, handover: null};

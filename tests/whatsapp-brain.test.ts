@@ -37,11 +37,12 @@ test('an ambiguous service is asked, not guessed',async()=>{const db=setup();
  next={intent:'BOOKING_REQUEST',patient_name:'Hina',service_name:'facial',date:wd(2),time:'18:30'};const r=await handleTurn(D(db),cfg,contact(),'Hina, facial parson saade 6');
  assert.equal(r.draft.service,undefined);assert.match(last(),/which treatment/);assert.equal(db.connection.prepare('SELECT count(*) n FROM appointments').get()!.n,0);});
 
-test('taken slot offers alternatives; outside hours and past dates are refused',async()=>{const db=setup();
+test('taken slot auto-books the next free slot; outside hours and past dates are refused',async()=>{const db=setup();
  next={intent:'BOOKING_REQUEST',patient_name:'Ali',service_name:'Skin Consultation'};await handleTurn(D(db),cfg,contact(),`Ali consultation ${dm(wd(3))} 7 baje`);
  const other={...contact(),contact_key:'+923009999999',reply_to:'+923009999999'};
  next={intent:'BOOKING_REQUEST',patient_name:'Bilal',service_name:'Skin Consultation'};let r=await handleTurn(D(db),cfg,other,`Bilal consultation ${dm(wd(3))} 7 baje`);
- assert.match(last(),/^SLOT_TAKEN.*(6:45 PM|7:15 PM)/);assert.equal(r.draft.time,undefined);
+ assert.match(r.reply!,/pehle se booked tha[\s\S]*agla available slot[\s\S]*✅[\s\S]*Bilal[\s\S]*7:15 PM/);
+ const b=db.connection.prepare("SELECT appointment_date,appointment_time FROM appointments WHERE patient_name='Bilal'").get() as Record<string,string>;assert.equal(b.appointment_date,wd(3));assert.equal(b.appointment_time,'19:15');
  r=await handleTurn(D(db),cfg,{...other,draft:{}},`Bilal consultation ${dm(wd(3))} subah 11 baje`);assert.match(last(),/OUTSIDE_HOURS/);
  r=await handleTurn(D(db),cfg,{...other,draft:{}},`Bilal consultation ${dm(day(-2))}/${day(-2).slice(0,4)} 7 baje`);assert.match(last(),/DATE_IN_PAST/);});
 
@@ -69,3 +70,16 @@ test('Saturday and Sunday are refused with the next working day suggested',async
  assert.match(last(),/CLOSED_DAY.*Monday/);assert.equal(r.draft.date,undefined);assert.equal(db.connection.prepare('SELECT count(*) n FROM appointments').get()!.n,0);});
 test('closing messages get no reply',async()=>{const db=setup();
  next={intent:'THANKS_BYE'};const r=await handleTurn(D(db),cfg,contact(),'ok shukriya');assert.equal(r.reply,null);});
+
+test('no service named: a consultation is booked by default',async()=>{const db=setup();
+ next={intent:'BOOKING_REQUEST',patient_name:'Nida',service_name:null};const r=await handleTurn(D(db),cfg,contact(),`Nida ${dm(wd(2))} 6 baje appointment chahiye`);
+ assert.match(r.reply!,/✅[\s\S]*Skin Consultation[\s\S]*PKR 2,000/);assert.equal((db.connection.prepare('SELECT service FROM appointments').get() as {service:string}).service,'Skin Consultation');});
+
+test('medicine questions are forwarded to the doctor, never answered',async()=>{const db=setup();
+ next={intent:'MEDICINE_QUESTION'};let r=await handleTurn(D(db),cfg,contact(),'daano ke liye konsi cream lagaun?');assert.match(last(),/^MEDICINE_FORWARDED/);assert.equal(r.handover,'MEDICINE_QUESTION_FOR_DOCTOR');
+ next={intent:'MEDICAL_CONCERN'};r=await handleTurn(D(db),cfg,contact(),'kya main antibiotic tablet le sakti hoon?');assert.match(last(),/^MEDICINE_FORWARDED/);assert.equal(r.handover,'MEDICINE_QUESTION_FOR_DOCTOR');});
+
+test('a listed service without a price is never priced; the doctor decides in consultation',async()=>{const db=setup();
+ db.connection.prepare("INSERT INTO treatments(id,clinic_id,name,price,status) VALUES(?,?,?,?,'Active')").run(crypto.randomUUID(),'skinuvia','Mole Removal',0);
+ next={intent:'PRICE_QUESTION',service_name:'Mole Removal'};await handleTurn(D(db),cfg,contact(),'mole removal kitne ka hai?');
+ assert.match(last(),/^SERVICE_PRICE_NOT_LISTED[\s\S]*Do NOT guess/);assert.doesNotMatch(last(),/PKR 0/);});

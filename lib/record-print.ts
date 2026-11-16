@@ -3,7 +3,7 @@ type Row=Record<string,unknown>;
 const escape=(value:unknown)=>String(value??'').replace(/[&<>"']/g,character=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]!));
 export function formatAppointmentDate(value:unknown) {
  const raw=String(value||'').slice(0,10),parts=raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
- return parts?`${parts[2]}/${parts[3]}/${parts[1]}`:raw||'—';
+ return parts?`${parts[3]}/${parts[2]}/${parts[1]}`:raw||'—';
 }
 
 export function appointmentPrintEntries(row:Row):[string,unknown][] {

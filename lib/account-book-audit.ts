@@ -1,3 +1,4 @@
+import {formatDisplayDate} from './display-date.ts';
 export type AuditMode='day'|'month'|'range'|'all';
 
 export type AuditPeriod={mode:AuditMode;day:string;month:string;from:string;to:string};
@@ -16,7 +17,7 @@ export function dateInAuditPeriod(date:string,period:AuditPeriod){
  return true;
 }
 
-const readableDate=(value:string)=>value?new Intl.DateTimeFormat('en-PK',{day:'numeric',month:'short',year:'numeric'}).format(new Date(`${value}T12:00:00`)):'Not selected';
+const readableDate=(value:string)=>value?formatDisplayDate(value):'Not selected';
 
 export function auditPeriodLabel(period:AuditPeriod){
  if(period.mode==='day')return readableDate(period.day);

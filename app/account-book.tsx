@@ -1,4 +1,6 @@
 "use client";
+import {DateField} from '../components/date-field';
+import {formatDisplayDate,isDateColumn} from '../lib/display-date';
 import {useState} from 'react';
 import {CalendarDays,ReceiptText,TrendingDown,TrendingUp,WalletCards} from 'lucide-react';
 import {vendorBalance} from '../lib/commerce';
@@ -48,9 +50,9 @@ export function AccountBook({data}:{data:Data}){
   <div className="pageTitle"><div><span>DOCTOR ONLY · FINANCIAL AUDIT</span><h1>Account Book</h1><p>See exactly where money came from and where it went.</p></div><button className="primary" onClick={()=>window.print()}><ReceiptText/> Print financial audit</button></div>
   <section className="accountFilters panel" aria-label="Audit period">
    <div className="accountModeTabs" role="group" aria-label="Choose audit period">{modes.map(option=><button type="button" className={mode===option.value?'active':''} aria-pressed={mode===option.value} key={option.value} onClick={()=>setMode(option.value)}>{option.label}</button>)}</div>
-   {mode==='day'&&<label><span>Audit date</span><input type="date" value={day} onChange={event=>setDay(event.target.value)}/></label>}
+   {mode==='day'&&<label><span>Audit date</span><DateField value={day} onChange={(__v:string)=>setDay(__v)}/></label>}
    {mode==='month'&&<label><span>Audit month</span><input type="month" value={month} onChange={event=>setMonth(event.target.value)}/></label>}
-   {mode==='range'&&<><label><span>From date</span><input type="date" value={from} max={to||undefined} onChange={event=>setFrom(event.target.value)}/></label><label><span>To date</span><input type="date" value={to} min={from||undefined} onChange={event=>setTo(event.target.value)}/></label></>}
+   {mode==='range'&&<><label><span>From date</span><DateField value={from} max={to||undefined} onChange={(__v:string)=>setFrom(__v)}/></label><label><span>To date</span><DateField value={to} min={from||undefined} onChange={(__v:string)=>setTo(__v)}/></label></>}
    <button type="button" className="todayAudit" onClick={()=>{setMode('day');setDay(clinicDate())}}><CalendarDays/> Today</button>
   </section>
   <section className="auditOverview panel">

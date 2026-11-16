@@ -3,7 +3,7 @@ import {useCallback,useEffect,useState} from 'react';
 import {CheckCircle2,FileText,Image as ImageIcon,RefreshCw} from 'lucide-react';
 
 type Doc={id:string;phone:string;patient_name:string;kind:string;mime_type:string;file_name:string;caption:string;size:number;status:string;error:string|null;reviewed_at:string|null;reviewed_by:string|null;created_at:string};
-const when=(v:string)=>new Intl.DateTimeFormat('en-PK',{timeZone:'Asia/Karachi',dateStyle:'medium',timeStyle:'short'}).format(new Date(v.replace(' ','T')+(v.includes('Z')?'':'Z')));
+const when=(v:string)=>new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Karachi',day:'2-digit',month:'2-digit',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true}).format(new Date(v.replace(' ','T')+(v.includes('Z')?'':'Z')));
 const size=(n:number)=>n>1048576?`${(n/1048576).toFixed(1)} MB`:n?`${Math.max(1,Math.round(n/1024))} KB`:'—';
 
 export function PatientDocuments(){
