@@ -20,3 +20,16 @@ export function parseDisplayDate(text: string): string | null {
 
 /** Column keys that hold a calendar date. */
 export const isDateColumn = (key: string) => key === 'date' || key === 'expiry' || key.endsWith('_date');
+
+/** Dashboard times are shown in 12-hour format: 17:30 → 5:30 PM. Storage stays 24-hour (HH:MM). */
+export function formatDisplayTime(value: unknown, empty = '—') {
+  const raw = String(value ?? '').trim();
+  const parts = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!parts) return raw || empty;
+  const hour = Number(parts[1]);
+  if (hour > 23) return raw;
+  return `${hour % 12 || 12}:${parts[2]} ${hour >= 12 ? 'PM' : 'AM'}`;
+}
+
+/** Column keys that hold a clock time. */
+export const isTimeColumn = (key: string) => key === 'time' || key.endsWith('_time');

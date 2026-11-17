@@ -1,3 +1,4 @@
+import {formatDisplayTime} from './display-date.ts';
 type Row=Record<string,unknown>;
 
 const escape=(value:unknown)=>String(value??'').replace(/[&<>"']/g,character=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]!));
@@ -13,7 +14,7 @@ export function appointmentPrintEntries(row:Row):[string,unknown][] {
   ['Phone Number',row.phone||'—'],
   ['Service / Treatment',row.service||row.treatment||'—'],
   ['Appointment Date',formatAppointmentDate(row.appointment_date)],
-  ['Appointment Time',row.appointment_time||'—'],
+  ['Appointment Time',formatDisplayTime(row.appointment_time)],
   ['Price',`PKR ${Number(row.price||0).toLocaleString('en-PK')}`],
   ['Created At',row.created_at||'—']
  ];
