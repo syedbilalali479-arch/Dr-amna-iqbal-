@@ -17,7 +17,7 @@ const CLINIC = "skinuvia";
 const BASE = "https://www.wasenderapi.com/api";
 const HANDOVER_MINUTES = 15;
 
-type RuntimeEnv = typeof env & {GEMINI_API_KEY?: string; GEMINI_MODEL?: string; GEMINI_DAILY_CALL_LIMIT?: string; WHATSAPP_AI_DAILY_LIMIT?: string; WHATSAPP_MESSAGE_REPLY_DELAY_MS?: string; WHATSAPP_CALL_REPLY_DELAY_MS?: string};
+type RuntimeEnv = typeof env & {DEEPSEEK_API_KEY?: string; DEEPSEEK_MODEL?: string; GEMINI_API_KEY?: string; GEMINI_MODEL?: string; GEMINI_DAILY_CALL_LIMIT?: string; WHATSAPP_AI_DAILY_LIMIT?: string; WHATSAPP_MESSAGE_REPLY_DELAY_MS?: string; WHATSAPP_CALL_REPLY_DELAY_MS?: string};
 const runtime = () => env as RuntimeEnv;
 const db = () => env.DB!;
 const replyDelay = () => Number(runtime().WHATSAPP_MESSAGE_REPLY_DELAY_MS || 5000);
@@ -136,19 +136,39 @@ async function transcribeVoice(item: Record<string, string>, cfg: GeminiConfig |
   }
 }
 
+// Gemini: voice-note transcription, and backup for text when DeepSeek fails or has no key.
 async function geminiConfig(): Promise<GeminiConfig | null> {
   const r = runtime();
   if (!r.GEMINI_API_KEY) return null;
-  const limit = Number(r.WHATSAPP_AI_DAILY_LIMIT || 1500);
+  if (await aiLimitReached()) return null;
+  return {apiKey: r.GEMINI_API_KEY, model: r.GEMINI_MODEL || "gemini-2.5-flash-lite", provider: "gemini", onCall: recordAiCall};
+}
+
+// Text messages (understanding + reply) run on DeepSeek when DEEPSEEK_API_KEY is set.
+async function textAiConfig(voice: GeminiConfig | null): Promise<GeminiConfig | null> {
+  const r = runtime();
+  if (!r.DEEPSEEK_API_KEY) return voice;
+  if (await aiLimitReached()) return null;
+  return {apiKey: r.DEEPSEEK_API_KEY, model: r.DEEPSEEK_MODEL || "deepseek-chat", provider: "deepseek", fallback: voice, onCall: recordAiCall};
+}
+
+async function aiLimitReached() {
+  const limit = Number(runtime().WHATSAPP_AI_DAILY_LIMIT || 1500);
   const used = await db().prepare("SELECT COUNT(*) AS n FROM whatsapp_ai_usage WHERE clinic_id=? AND created_at>=date('now')").bind(CLINIC).first<{n: number}>();
-  if (Number(used?.n || 0) >= limit) { log({stage: "ai", note: "daily Gemini limit reached, using basic replies"}); return null; }
-  return {apiKey: r.GEMINI_API_KEY, model: r.GEMINI_MODEL || "gemini-2.5-flash-lite", onCall: async (operation, ok, ms) => { await db().prepare("INSERT INTO whatsapp_ai_usage(id,clinic_id,operation,outcome,latency_ms) VALUES(?,?,?,?,?)").bind(id("AIU"), CLINIC, operation, ok ? "SUCCESS" : "FAILED", ms).run(); }};
+  if (Number(used?.n || 0) < limit) return false;
+  log({stage: "ai", note: "daily AI limit reached, using basic replies"});
+  return true;
+}
+
+async function recordAiCall(operation: string, ok: boolean, ms: number) {
+  await db().prepare("INSERT INTO whatsapp_ai_usage(id,clinic_id,operation,outcome,latency_ms) VALUES(?,?,?,?,?)").bind(id("AIU"), CLINIC, operation, ok ? "SUCCESS" : "FAILED", ms).run();
 }
 
 async function handleBatch(key: string, items: Array<Record<string, string>>) {
   const last = items[items.length - 1];
   const contact = await loadContact(key, last.reply_to, items.map((i) => i.push_name).filter(Boolean).pop() || null);
   const cfg = await geminiConfig();
+  const textCfg = await textAiConfig(cfg);
 
   // Missed calls get a short WhatsApp message, nothing else.
   const calls = items.filter((i) => i.kind === "call");
@@ -213,10 +233,10 @@ async function handleBatch(key: string, items: Array<Record<string, string>>) {
       return;
     }
   }
-  let reply: string | null = null, intent = "OTHER", language = contact.language, draft = contact.draft, handover: string | null | undefined = null, route = "gemini";
-  if (cfg) {
-    try { ({reply, intent, language, draft, handover} = await handleTurn(db(), cfg, contact, turn)); }
-    catch (error) { log({contact: mask(key), stage: "gemini", error: error instanceof Error ? error.message : String(error), fallback: "basic engine"}); route = "basic"; }
+  let reply: string | null = null, intent = "OTHER", language = contact.language, draft = contact.draft, handover: string | null | undefined = null, route: string = textCfg?.provider || "gemini";
+  if (textCfg) {
+    try { ({reply, intent, language, draft, handover} = await handleTurn(db(), textCfg, contact, turn)); }
+    catch (error) { log({contact: mask(key), stage: textCfg.provider || "gemini", error: error instanceof Error ? error.message : String(error), fallback: "basic engine"}); route = "basic"; }
   } else route = "basic";
   if (route === "basic") {
     const startedAt = iso(Date.now() - 1000);

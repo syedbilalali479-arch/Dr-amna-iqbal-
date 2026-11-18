@@ -45,7 +45,9 @@ Railway variables:
 |---|---|
 | `WHATSAPP_API_TOKEN` | WaSender Personal Access Token (preferred) or the session API key |
 | `WHATSAPP_SESSION_ID` | WaSender session ID |
-| `GEMINI_API_KEY` | Google AI Studio key (required for the natural AI receptionist) |
+| `DEEPSEEK_API_KEY` | DeepSeek key: when set, DeepSeek reads and answers WhatsApp text messages (Gemini becomes the backup) |
+| `DEEPSEEK_MODEL` | optional, default `deepseek-chat` |
+| `GEMINI_API_KEY` | Google AI Studio key: transcribes WhatsApp voice notes, and answers text when no DeepSeek key is set |
 | `GEMINI_MODEL` | optional, default `gemini-2.5-flash-lite` |
 | `WHATSAPP_WEBHOOK_SECRET` | optional; the session's webhook secret is read from WaSender automatically |
 

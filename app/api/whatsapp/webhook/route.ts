@@ -4,7 +4,7 @@ import {acceptWebhook, activity, ensureSweeper, log} from "../../../../lib/whats
 
 // WaSender posts every WhatsApp event here. Messages are stored first and answered by the
 // AI receptionist a few seconds later (see lib/whatsapp/engine.ts).
-type RuntimeEnv = typeof env & {WHATSAPP_WEBHOOK_SECRET?: string; GEMINI_API_KEY?: string};
+type RuntimeEnv = typeof env & {WHATSAPP_WEBHOOK_SECRET?: string; GEMINI_API_KEY?: string; DEEPSEEK_API_KEY?: string};
 const CLINIC = "skinuvia";
 
 async function secrets() {
@@ -32,7 +32,7 @@ export async function GET(request: Request) {
   return Response.json({
     ...base,
     webhook,
-    config: {apiToken: Boolean(runtime.WHATSAPP_API_TOKEN), sessionId: Boolean(runtime.WHATSAPP_SESSION_ID), sessionApiKeyFound: Boolean(info?.apiKey), sessionStatus: info?.status, webhookSecret: list.length > 0, gemini: Boolean(runtime.GEMINI_API_KEY)},
+    config: {apiToken: Boolean(runtime.WHATSAPP_API_TOKEN), sessionId: Boolean(runtime.WHATSAPP_SESSION_ID), sessionApiKeyFound: Boolean(info?.apiKey), sessionStatus: info?.status, webhookSecret: list.length > 0, gemini: Boolean(runtime.GEMINI_API_KEY), deepseek: Boolean(runtime.DEEPSEEK_API_KEY), textAi: runtime.DEEPSEEK_API_KEY ? "deepseek" : runtime.GEMINI_API_KEY ? "gemini" : "basic", voiceAi: runtime.GEMINI_API_KEY ? "gemini" : "off"},
     queue: {
       waiting: await count("SELECT COUNT(*) n FROM whatsapp_inbound WHERE clinic_id=? AND status IN ('RECEIVED','PROCESSING')"),
       failedToday: await count("SELECT COUNT(*) n FROM whatsapp_inbound WHERE clinic_id=? AND status='FAILED' AND created_at>=date('now')"),

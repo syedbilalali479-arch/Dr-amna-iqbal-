@@ -1,4 +1,5 @@
-// Gemini calls for the WhatsApp receptionist: structured understanding, natural reply, voice notes.
+// AI calls for the WhatsApp receptionist. Text (understanding + reply) runs on DeepSeek when
+// DEEPSEEK_API_KEY is set, with Gemini as backup; voice notes are always transcribed by Gemini.
 export const INTENTS = ["GREETING", "INFO_QUESTION", "PRICE_QUESTION", "BOOKING_REQUEST", "BOOKING_CONFIRMATION", "CANCEL", "RESCHEDULE", "APPOINTMENT_STATUS", "MEDICAL_CONCERN", "MEDICINE_QUESTION", "COMPLAINT", "HUMAN_REQUEST", "THANKS_BYE", "OTHER"] as const;
 export type Intent = (typeof INTENTS)[number];
 export type Language = "ROMAN_URDU" | "URDU" | "ENGLISH";
@@ -14,7 +15,8 @@ export type Analysis = {
   explicit_confirmation: boolean;
 };
 
-export type GeminiConfig = {apiKey: string; model: string; onCall?: (operation: string, ok: boolean, ms: number) => Promise<void> | void};
+export type AiProvider = "gemini" | "deepseek";
+export type GeminiConfig = {apiKey: string; model: string; provider?: AiProvider; fallback?: GeminiConfig | null; onCall?: (operation: string, ok: boolean, ms: number) => Promise<void> | void};
 
 const ANALYSIS_PROMPT = `You read WhatsApp messages sent to a skin clinic and return ONE JSON decision for the newest patient turn.
 - The newest turn may be several numbered fragments ([Message 1], [Message 2]...). Combine them into one meaning.
@@ -82,16 +84,54 @@ async function generate(cfg: GeminiConfig, operation: string, body: Record<strin
   }
 }
 
+async function deepseek(cfg: GeminiConfig, operation: string, system: string, user: string, options: {json: boolean; temperature: number; maxTokens: number}, timeoutMs: number) {
+  const started = Date.now();
+  let ok = false;
+  try {
+    const response = await fetch("https://api.deepseek.com/chat/completions", {
+      method: "POST",
+      headers: {"content-type": "application/json", authorization: `Bearer ${cfg.apiKey}`},
+      body: JSON.stringify({
+        model: cfg.model,
+        messages: [{role: "system", content: system}, {role: "user", content: user}],
+        temperature: options.temperature,
+        max_tokens: options.maxTokens,
+        ...(options.json ? {response_format: {type: "json_object"}} : {}),
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const json = (await response.json().catch(() => null)) as {choices?: Array<{message?: {content?: string | null}}>; error?: {message?: string}} | null;
+    if (!response.ok) throw new Error(`DeepSeek ${operation} failed (${response.status}): ${json?.error?.message || "unknown"}`);
+    const text = String(json?.choices?.[0]?.message?.content || "").trim();
+    if (!text) throw new Error(`DeepSeek ${operation} returned no text`);
+    ok = true;
+    return text;
+  } finally {
+    await cfg.onCall?.(`deepseek:${operation}`, ok, Date.now() - started);
+  }
+}
+
+/** Runs one text call on the configured provider; a failed DeepSeek call is retried once on the Gemini backup. */
+async function complete(cfg: GeminiConfig, operation: string, system: string, user: string, options: {json: boolean; temperature: number; maxTokens: number; schema?: Record<string, unknown>}, timeoutMs: number): Promise<string> {
+  if (cfg.provider === "deepseek") {
+    try { return await deepseek(cfg, operation, system, user, options, timeoutMs); }
+    catch (error) { if (!cfg.fallback) throw error; return complete(cfg.fallback, operation, system, user, options, timeoutMs); }
+  }
+  return generate(cfg, operation, {
+    systemInstruction: {parts: [{text: system}]},
+    contents: [{role: "user", parts: [{text: user}]}],
+    generationConfig: {temperature: options.temperature, maxOutputTokens: options.maxTokens, ...(options.json ? {responseMimeType: "application/json", ...(options.schema ? {responseSchema: options.schema} : {})} : {})},
+  }, timeoutMs);
+}
+
+const JSON_SHAPE = `\nReturn ONLY one json object with exactly these keys: {"language": "ROMAN_URDU"|"URDU"|"ENGLISH", "intent": one of ${INTENTS.join("|")}, "needs_human": boolean, "medical_urgency": boolean, "patient_name": string|null, "service_name": string|null, "date": "YYYY-MM-DD"|null, "time": "HH:MM"|null, "explicit_confirmation": boolean}. No other text.`;
+
 const isDate = (v: unknown) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const isTime = (v: unknown) => typeof v === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(v);
 
 export async function analyze(cfg: GeminiConfig, context: string, newestTurn: string): Promise<Analysis> {
-  const text = await generate(cfg, "analyze", {
-    systemInstruction: {parts: [{text: ANALYSIS_PROMPT}]},
-    contents: [{role: "user", parts: [{text: `${context}\n\nNEWEST PATIENT TURN:\n${newestTurn.slice(0, 3000)}`}]}],
-    generationConfig: {temperature: 0, maxOutputTokens: 400, responseMimeType: "application/json", responseSchema: SCHEMA},
-  }, 12_000);
-  const raw = JSON.parse(text) as Record<string, unknown>;
+  const text = await complete(cfg, "analyze", ANALYSIS_PROMPT + JSON_SHAPE, `${context}\n\nNEWEST PATIENT TURN:\n${newestTurn.slice(0, 3000)}`, {json: true, temperature: 0, maxTokens: 400, schema: SCHEMA}, 15_000);
+  const raw = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, "")) as Record<string, unknown>;
   const clean = (v: unknown) => (typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null" ? v.trim() : null);
   return {
     language: ["ROMAN_URDU", "URDU", "ENGLISH"].includes(String(raw.language)) ? (raw.language as Language) : "ROMAN_URDU",
@@ -107,11 +147,7 @@ export async function analyze(cfg: GeminiConfig, context: string, newestTurn: st
 }
 
 export async function writeReply(cfg: GeminiConfig, clinic: string, doctor: string, context: string, newestTurn: string, backendResult: string) {
-  const text = await generate(cfg, "reply", {
-    systemInstruction: {parts: [{text: REPLY_PROMPT(clinic, doctor)}]},
-    contents: [{role: "user", parts: [{text: `${context}\n\nNEWEST PATIENT TURN:\n${newestTurn.slice(0, 3000)}\n\nBACKEND RESULT (authoritative):\n${backendResult}\n\nWrite the reply now.`}]}],
-    generationConfig: {temperature: 0.4, maxOutputTokens: 400},
-  }, 15_000);
+  const text = await complete(cfg, "reply", REPLY_PROMPT(clinic, doctor), `${context}\n\nNEWEST PATIENT TURN:\n${newestTurn.slice(0, 3000)}\n\nBACKEND RESULT (authoritative):\n${backendResult}\n\nWrite the reply now.`, {json: false, temperature: 0.4, maxTokens: 400}, 20_000);
   return text.replace(/^["']|["']$/g, "").trim().slice(0, 1500);
 }
 

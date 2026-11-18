@@ -7,6 +7,8 @@ export const env={
  get WHATSAPP_PERSONAL_TOKEN(){return process.env.WASENDER_PERSONAL_ACCESS_TOKEN||process.env.WASENDER_PERSONAL_TOKEN||process.env.WHATSAPP_PERSONAL_TOKEN||process.env.WHATSAPP_PERSONAL_ACCESS_TOKEN||process.env.WASENDER_ACCESS_TOKEN||process.env.WASENDER_PAT||process.env.WHATSAPP_ACCESS_TOKEN;},
  get WHATSAPP_SESSION_ID(){return process.env.WHATSAPP_SESSION_ID||process.env.WASENDER_SESSION_ID||process.env.WHATSAPP_SESSION||process.env.WASENDER_SESSION;},
  get WHATSAPP_WEBHOOK_SECRET(){return process.env.WHATSAPP_WEBHOOK_SECRET;},
+ get DEEPSEEK_API_KEY(){return process.env.DEEPSEEK_API_KEY;},
+ get DEEPSEEK_MODEL(){return process.env.DEEPSEEK_MODEL;},
  get GEMINI_API_KEY(){return process.env.GEMINI_API_KEY;},
  get GEMINI_MODEL(){return process.env.GEMINI_MODEL;},
  get GEMINI_DAILY_CALL_LIMIT(){return process.env.GEMINI_DAILY_CALL_LIMIT;},

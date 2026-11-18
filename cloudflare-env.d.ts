@@ -5,6 +5,8 @@ declare namespace Cloudflare {
     WHATSAPP_API_TOKEN?: string;
     WHATSAPP_SESSION_ID?: string;
     WHATSAPP_WEBHOOK_SECRET?: string;
+    DEEPSEEK_API_KEY?: string;
+    DEEPSEEK_MODEL?: string;
     GEMINI_API_KEY?: string;
     GEMINI_MODEL?: string;
     GEMINI_DAILY_CALL_LIMIT?: string;
