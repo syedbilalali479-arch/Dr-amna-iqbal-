@@ -17,8 +17,22 @@ export function barcodeDetails(raw:string):ScannedBarcode{
  return {code,gtin,batch:batch||code,encodedBatch:batch,expiry:expiryDate,candidates:[code,gtin,batch].map(clean).filter(Boolean)};
 }
 
-export function findBarcodeMedicine(medicines:BarcodeMedicine[],parsed:ScannedBarcode){
- return medicines.find(medicine=>[medicine.barcode,medicine.batch].map(clean).some(value=>value&&parsed.candidates.includes(value)));
+/**
+ * Several batches of one product usually share the same barcode. For a sale, pick a batch that can
+ * actually be sold: in stock and not expired, earliest expiry first. An exact batch match wins.
+ */
+export function findBarcodeMedicine(medicines:BarcodeMedicine[],parsed:ScannedBarcode,kind:'purchases'|'sales'='purchases',today=''){
+ const matches=medicines.filter(medicine=>[medicine.barcode,medicine.batch].map(clean).some(value=>value&&parsed.candidates.includes(value)));
+ if(kind!=='sales'||matches.length<2)return matches[0];
+ const exactBatch=parsed.encodedBatch?matches.filter(medicine=>clean(medicine.batch)===clean(parsed.encodedBatch)):[];
+ return preferSellableBatch(exactBatch.length?exactBatch:matches,today);
+}
+
+/** The best batch to sell from a list of batches of the same medicine. */
+export function preferSellableBatch<T extends Record<string,unknown>>(batches:T[],today=''):T|undefined{
+ const sellable=batches.filter(batch=>Number(batch.quantity||0)>0&&(!today||String(batch.expiry||'')>=today));
+ const pool=sellable.length?sellable:batches.filter(batch=>Number(batch.quantity||0)>0);
+ return [...(pool.length?pool:batches)].sort((a,b)=>String(a.expiry||'').localeCompare(String(b.expiry||'')))[0];
 }
 
 export function scannedMedicineLine(medicine:BarcodeMedicine,kind:'purchases'|'sales',parsed:ScannedBarcode):Line{

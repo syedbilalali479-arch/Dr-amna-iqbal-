@@ -29,3 +29,9 @@ test('GS1 scan supports GTIN, batch and expiry data',()=>{
  assert.equal(parsed.expiry,'2028-12-31');
  assert.equal(findBarcodeMedicine([{...medicine,barcode:'08964000000011'}],parsed)?.id,'med-1');
 });
+test('sales scan picks the in-stock, unexpired batch when batches share a barcode',()=>{
+ const batches=[{id:'old',name:'Bio One Cream',barcode:'8964000000099',batch:'A1',expiry:'2027-01-31',quantity:0},{id:'expired',name:'Bio One Cream',barcode:'8964000000099',batch:'A0',expiry:'2026-01-31',quantity:3},{id:'live',name:'Bio One Cream',barcode:'8964000000099',batch:'B2',expiry:'2028-06-30',quantity:5}];
+ const parsed=barcodeDetails('8964000000099');
+ assert.equal(findBarcodeMedicine(batches,parsed,'sales','2026-11-18')?.id,'live');
+ assert.equal(findBarcodeMedicine(batches,parsed)?.id,'old');
+});

@@ -70,6 +70,11 @@ export async function POST(request:Request) {
    statements.push(db.prepare('INSERT INTO commerce_guards(id,valid) VALUES(?,changes())').bind(guardId));
    statements.push(db.prepare('DELETE FROM commerce_guards WHERE id=?').bind(guardId));
   }else statements.push(db.prepare('INSERT INTO commerce_documents(id,clinic_id,kind,body) VALUES(?,?,?,?)').bind(recordId,clinic,kind,JSON.stringify(after)));
+  // Name the medicine that is short instead of the database's generic "Insufficient medicine stock".
+  for(const [medicineId,delta] of stockDelta(kind,before,after))if(delta<0){
+   const med=await db.prepare('SELECT name,batch,quantity FROM medicines WHERE clinic_id=? AND id=?').bind(clinic,medicineId).first<{name:string;batch:string;quantity:number}>();
+   if(med&&Number(med.quantity)+delta<0)throw new Error(`Insufficient stock for ${med.name} (Batch ${med.batch}): ${Number(med.quantity)} available, this bill needs ${-delta} more. Select a batch that has stock or refresh the page.`);
+  }
   for(const [medicineId,delta] of stockDelta(kind,before,after)) {
    statements.push(db.prepare('UPDATE medicines SET quantity=quantity+?,updated_at=CURRENT_TIMESTAMP WHERE clinic_id=? AND id=?').bind(delta,clinic,medicineId));
    statements.push(db.prepare('INSERT INTO commerce_guards(id,valid) VALUES(?,changes())').bind(guardId));
