@@ -7,35 +7,35 @@ import {saveAppointment} from "../appointment-booking.ts";
 import {analyze, writeReply, type Analysis, type GeminiConfig, type Language} from "./gemini.ts";
 import {cleanName, nameAppearsIn, parseAllDates, parseTime} from "./when.ts";
 
-const CLINIC = "skinuvia";
-const DOCTOR = "Dr. Aamina Iqbal";
-const OPEN = "17:00", CLOSE = "22:00", SLOT = 15;
+export const CLINIC = "skinuvia";
+export const DOCTOR = "Dr. Aamina Iqbal";
+export const OPEN = "17:00", CLOSE = "22:00", SLOT = 15;
 
-export type Draft = {patientName?: string; service?: string; date?: string; time?: string; active?: boolean; pendingCancelId?: string; askedCount?: number; lastAsked?: string};
+export type Draft = {patientName?: string; service?: string; date?: string; time?: string; active?: boolean; pendingCancelId?: string; askedCount?: number; lastAsked?: string; v3?: unknown};
 export type Contact = {contact_key: string; reply_to: string; name: string | null; language: Language; draft: Draft; human_controlled: number; handover_at: string | null};
 export type TurnResult = {reply: string | null; intent: string; language: Language; draft: Draft; handover?: string | null; appointmentId?: string};
-type Treatment = {name: string; description?: string; price: number; price_max?: number | null; pricing_type?: string; duration?: number; availability?: string; booking_instructions?: string | null};
-type Appointment = {id: string; patient_name: string; service: string; appointment_date: string; appointment_time: string; status: string; updated_at: string};
+export type Treatment = {name: string; description?: string; price: number; price_max?: number | null; pricing_type?: string; duration?: number; availability?: string; booking_instructions?: string | null};
+export type Appointment = {id: string; patient_name: string; service: string; appointment_date: string; appointment_time: string; status: string; updated_at: string};
 
-const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
-const toTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-const fmt12 = (t: string) => { const m = toMin(t), h = Math.floor(m / 60) % 12 || 12; return `${h}:${String(m % 60).padStart(2, "0")} ${m >= 720 ? "PM" : "AM"}`; };
+export const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+export const toTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+export const fmt12 = (t: string) => { const m = toMin(t), h = Math.floor(m / 60) % 12 || 12; return `${h}:${String(m % 60).padStart(2, "0")} ${m >= 720 ? "PM" : "AM"}`; };
 /** A service's price only when the clinic has actually set one; 0 / blank means "decided in consultation". */
-const knownPrice = (t: Treatment | undefined | null) => (t && Number(t.price) > 0 ? servicePriceLabel(t) : null);
-const fmtDate = (d: string) => new Intl.DateTimeFormat("en-PK", {timeZone: "Asia/Karachi", weekday: "long", day: "numeric", month: "long"}).format(new Date(`${d}T12:00:00+05:00`));
+export const knownPrice = (t: Treatment | undefined | null) => (t && Number(t.price) > 0 ? servicePriceLabel(t) : null);
+export const fmtDate = (d: string) => new Intl.DateTimeFormat("en-PK", {timeZone: "Asia/Karachi", weekday: "long", day: "numeric", month: "long"}).format(new Date(`${d}T12:00:00+05:00`));
 
-async function loadFacts(db: D1Database) {
+export async function loadFacts(db: D1Database) {
   const treatments = (await db.prepare("SELECT name,description,price,price_max,pricing_type,duration,availability,booking_instructions FROM treatments WHERE clinic_id=? AND status='Active' ORDER BY name").bind(CLINIC).all<Treatment>()).results;
   const promotions = (await db.prepare("SELECT name,service,original_price,offer_price,expiry_date FROM promotions WHERE clinic_id=? AND status='Active' AND expiry_date>=date('now') LIMIT 10").bind(CLINIC).all<Record<string, unknown>>()).results;
   return {treatments, promotions};
 }
 
-async function upcoming(db: D1Database, phone: string): Promise<Appointment[]> {
+export async function upcoming(db: D1Database, phone: string): Promise<Appointment[]> {
   const today = pakistanParts().date;
   return (await db.prepare("SELECT id,patient_name,service,appointment_date,appointment_time,status,updated_at FROM appointments WHERE clinic_id=? AND phone=? AND appointment_date>=? AND status NOT IN ('Cancelled','Completed','Rescheduled','No Show','No-show') ORDER BY appointment_date,appointment_time LIMIT 10").bind(CLINIC, phone, today).all<Appointment>()).results;
 }
 
-function factsText(facts: Awaited<ReturnType<typeof loadFacts>>) {
+export function factsText(facts: Awaited<ReturnType<typeof loadFacts>>) {
   const services = facts.treatments.map((t) => `- ${t.name}: ${knownPrice(t) ?? "price not listed (decided by the doctor in consultation)"}${t.duration ? `, about ${t.duration} min` : ""}${t.availability ? `, ${t.availability}` : ""}${t.booking_instructions ? `. Note: ${t.booking_instructions}` : ""}${t.description ? `. About: ${String(t.description).replace(/\s+/g, " ").slice(0, 220)}` : ""}`).join("\n") || "- (no services listed)";
   // The fee set in Treatments is the real one; the profile value is only a fallback.
   const consultation = facts.treatments.find((t) => /consultation/i.test(t.name));
@@ -69,7 +69,7 @@ RECENT CONVERSATION (oldest first):
 ${history.map((m) => `${m.direction === "IN" ? "Patient" : "Clinic"}: ${m.content}`).join("\n") || "(new conversation)"}`;
 }
 
-function findService(name: string | null | undefined, treatments: Treatment[]): {service: Treatment | null; ambiguous: boolean} {
+export function findService(name: string | null | undefined, treatments: Treatment[]): {service: Treatment | null; ambiguous: boolean} {
   const n = (name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   if (!n) return {service: null, ambiguous: false};
   const exact = treatments.find((t) => t.name.toLowerCase().replace(/[^a-z0-9]/g, "") === n);
@@ -81,14 +81,14 @@ function findService(name: string | null | undefined, treatments: Treatment[]): 
 const matchService = (name: string | null | undefined, treatments: Treatment[]) => findService(name, treatments).service;
 
 /** The default booking when the patient names no service: a consultation with the doctor. */
-function consultationService(treatments: Treatment[]) {
+export function consultationService(treatments: Treatment[]) {
   return treatments.find((t) => /^skin consultation$/i.test(t.name)) ?? treatments.find((t) => /consultation/i.test(t.name)) ?? null;
 }
 
 /** Medicine / prescription questions are for the doctor only; the receptionist never names a medicine. */
-const MEDICINE_WORDS = /\b(dawai|dawaai|dawa|dwai|medicine|medicines|medication|tablet|tablets|goli|golian|goliyan|capsule|syrup|injection|ointment|cream|creams|serum|sunblock|sunscreen|antibiotic|dose|dosage|prescribe|prescription|nuskha|nuskhe)\b|دوا|دوائی|گولی|کریم|نسخہ/i;
+export const MEDICINE_WORDS = /\b(dawai|dawaai|dawa|dwai|medicine|medicines|medication|tablet|tablets|goli|golian|goliyan|capsule|syrup|injection|ointment|cream|creams|serum|sunblock|sunscreen|antibiotic|dose|dosage|prescribe|prescription|nuskha|nuskhe)\b|دوا|دوائی|گولی|کریم|نسخہ/i;
 
-async function freeSlots(db: D1Database, date: string, from: string, excludeId?: string) {
+export async function freeSlots(db: D1Database, date: string, from: string, excludeId?: string) {
   const taken = new Set((await db.prepare("SELECT appointment_time FROM appointments WHERE clinic_id=? AND appointment_date=? AND doctor=? AND status NOT IN ('Cancelled','Rescheduled') AND id<>?").bind(CLINIC, date, DOCTOR, excludeId || "").all<{appointment_time: string}>()).results.map((r) => r.appointment_time));
   const now = pakistanParts();
   const free: number[] = [];
@@ -104,7 +104,7 @@ async function freeSlots(db: D1Database, date: string, from: string, excludeId?:
 }
 
 /** First free slot after the requested (taken) time; if that day is full, the earliest slot on the next open days. */
-async function nextFreeSlot(db: D1Database, date: string, time: string, excludeId?: string): Promise<{date: string; time: string} | null> {
+export async function nextFreeSlot(db: D1Database, date: string, time: string, excludeId?: string): Promise<{date: string; time: string} | null> {
   let day = date, after = toMin(time);
   for (let i = 0; i < 14; i++) {
     if (!isClosedDay(day)) {
@@ -129,7 +129,7 @@ const movedNote = (fromDate: string, fromTime: string, toDate: string, toTime: s
 };
 
 /** Checks date/time rules. Returns a normalised time or a reason it cannot be booked. */
-function checkSlot(date: string, time: string): {ok: true; time: string; note?: string} | {ok: false; reason: string} {
+export function checkSlot(date: string, time: string): {ok: true; time: string; note?: string} | {ok: false; reason: string} {
   const now = pakistanParts();
   if (date < now.date) return {ok: false, reason: `DATE_IN_PAST: ${date} has already passed. Ask for a future date.`};
   if (isClosedDay(date)) { const open = nextOpenDay(date); return {ok: false, reason: `CLOSED_DAY: the clinic is closed on ${clinicSchedule.closedLabel}; ${fmtDate(date)} is a closed day. Suggest ${fmtDate(open)} (${open}) or another day from Monday to Friday.`}; }

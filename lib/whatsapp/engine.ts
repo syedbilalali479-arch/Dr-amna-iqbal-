@@ -9,6 +9,7 @@ import {runHybrid} from "../ai/hybrid-orchestrator.ts";
 import {sendText, sendingKey} from "../wasender.ts";
 import {parseWebhook, type InboundItem} from "./payload.ts";
 import {handleTurn, type Contact, type Draft} from "./brain.ts";
+import {handleTurnV3} from "./engine-v3.ts";
 import {transcribe, type GeminiConfig, type Language} from "./gemini.ts";
 import {forwardedReply, savePatientDocument} from "./media.ts";
 import {isClosingOnly} from "./messages.ts";
@@ -17,7 +18,7 @@ const CLINIC = "skinuvia";
 const BASE = "https://www.wasenderapi.com/api";
 const HANDOVER_MINUTES = 15;
 
-type RuntimeEnv = typeof env & {DEEPSEEK_API_KEY?: string; DEEPSEEK_MODEL?: string; GEMINI_API_KEY?: string; GEMINI_MODEL?: string; GEMINI_DAILY_CALL_LIMIT?: string; WHATSAPP_AI_DAILY_LIMIT?: string; WHATSAPP_MESSAGE_REPLY_DELAY_MS?: string; WHATSAPP_CALL_REPLY_DELAY_MS?: string};
+type RuntimeEnv = typeof env & {DEEPSEEK_API_KEY?: string; DEEPSEEK_MODEL?: string; GEMINI_API_KEY?: string; GEMINI_MODEL?: string; GEMINI_DAILY_CALL_LIMIT?: string; WHATSAPP_AI_DAILY_LIMIT?: string; WHATSAPP_MESSAGE_REPLY_DELAY_MS?: string; WHATSAPP_ENGINE?: string; WHATSAPP_CALL_REPLY_DELAY_MS?: string};
 const runtime = () => env as RuntimeEnv;
 const db = () => env.DB!;
 const replyDelay = () => Number(runtime().WHATSAPP_MESSAGE_REPLY_DELAY_MS || 5000);
@@ -234,7 +235,13 @@ async function handleBatch(key: string, items: Array<Record<string, string>>) {
     }
   }
   let reply: string | null = null, intent = "OTHER", language = contact.language, draft = contact.draft, handover: string | null | undefined = null, route: string = textCfg?.provider || "gemini";
-  if (textCfg) {
+  if (textCfg && textCfg.provider === "deepseek" && runtime().WHATSAPP_ENGINE !== "legacy") {
+    // Engine V3 (tool-calling, two-phase confirm, loop guard). No fallback to the older engines: a failure here is
+    // retried by processContact, and V3's retry guard makes sure the same message is never booked twice.
+    const lastOut = await db().prepare("SELECT content FROM whatsapp_messages WHERE clinic_id=? AND contact_key=? AND direction='OUT' AND created_at>=datetime('now','-10 minutes') ORDER BY created_at DESC, rowid DESC LIMIT 1").bind(CLINIC, key).first<{content: string}>();
+    ({reply, intent, language, draft, handover} = await handleTurnV3(db(), textCfg, contact, turn, {turnKey: items.map((i) => i.id).join(","), currentInbound: messages.length, lastOutIsSafeReply: /(Aap ka message mil gaya hai 😊|Got your message 😊)/.test(lastOut?.content || "")}));
+    route = "deepseek-v3";
+  } else if (textCfg) {
     try { ({reply, intent, language, draft, handover} = await handleTurn(db(), textCfg, contact, turn)); }
     catch (error) { log({contact: mask(key), stage: textCfg.provider || "gemini", error: error instanceof Error ? error.message : String(error), fallback: "basic engine"}); route = "basic"; }
   } else route = "basic";
@@ -261,6 +268,8 @@ async function queueReply(contact: Contact, text: string, intent: string, source
 }
 
 const BACKOFF = [30_000, 120_000, 600_000, 1_800_000];
+const SEND_GAP_MS = 5_200;
+let lastSendAt = 0;
 async function deliver(msgId: string) {
   const msg = await db().prepare("SELECT m.*, c.reply_to FROM whatsapp_messages m JOIN whatsapp_contacts c ON c.clinic_id=m.clinic_id AND c.contact_key=m.contact_key WHERE m.id=? AND m.status IN ('PENDING','RETRY')").bind(msgId).first<Record<string, string>>();
   if (!msg) return;
@@ -269,6 +278,10 @@ async function deliver(msgId: string) {
   const token = runtime().WHATSAPP_API_TOKEN;
   try {
     if (!token) throw new Error("WHATSAPP_API_TOKEN missing in Railway variables");
+    // WaSender account protection: 1 message every 5 seconds. Space our own sends instead of failing with 429.
+    const wait = lastSendAt + SEND_GAP_MS - Date.now();
+    lastSendAt = Math.max(Date.now(), lastSendAt + SEND_GAP_MS);
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
     await sendText(token, runtime().WHATSAPP_SESSION_ID, msg.reply_to, msg.content);
     await db().prepare("UPDATE whatsapp_messages SET status='SENT',attempts=attempts+1,error=NULL WHERE id=?").bind(msgId).run();
   } catch (error) {

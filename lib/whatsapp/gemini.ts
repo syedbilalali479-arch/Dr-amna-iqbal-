@@ -161,3 +161,41 @@ export async function transcribe(cfg: GeminiConfig, audio: ArrayBuffer, mimeType
     generationConfig: {temperature: 0, maxOutputTokens: 500},
   }, 30_000);
 }
+
+// ---------- tool-calling chat (engine V3) ----------
+export type ChatMessage =
+  | {role: "system" | "user"; content: string}
+  | {role: "assistant"; content: string | null; tool_calls?: Array<{id: string; type: "function"; function: {name: string; arguments: string}}>}
+  | {role: "tool"; tool_call_id: string; content: string};
+export type ToolDefinition = {type: "function"; function: {name: string; description: string; parameters: Record<string, unknown>}};
+export type ChatResult = {content: string; toolCalls: Array<{id: string; name: string; arguments: string}>; usage: {input: number; cached: number; output: number}};
+export class AiError extends Error { constructor(message: string, readonly code: string) { super(message); } }
+
+/** One OpenAI-compatible chat call on DeepSeek, with optional tools. No side effects, safe to retry once. */
+export async function chatCompletion(cfg: GeminiConfig, input: {messages: ChatMessage[]; tools?: ToolDefinition[] | null; maxTokens?: number; temperature?: number; timeoutMs?: number}): Promise<ChatResult> {
+  if (cfg.provider !== "deepseek") throw new AiError("Engine V3 needs DeepSeek", "AI_NOT_CONFIGURED");
+  const started = Date.now();
+  let ok = false;
+  try {
+    const response = await fetch("https://api.deepseek.com/chat/completions", {
+      method: "POST",
+      headers: {"content-type": "application/json", authorization: `Bearer ${cfg.apiKey}`},
+      body: JSON.stringify({model: cfg.model, messages: input.messages, stream: false, max_tokens: input.maxTokens ?? 350, temperature: input.temperature ?? 0.4, ...(input.tools?.length ? {tools: input.tools} : {}), ...(/flash|v4/i.test(cfg.model) ? {thinking: {type: "disabled"}} : {})}),
+      signal: AbortSignal.timeout(input.timeoutMs ?? 20_000),
+    });
+    const json = (await response.json().catch(() => null)) as {choices?: Array<{message?: {content?: string | null; tool_calls?: Array<{id?: string; function?: {name?: string; arguments?: string}}>}}>; usage?: {prompt_tokens?: number; completion_tokens?: number; prompt_cache_hit_tokens?: number}; error?: {message?: string}} | null;
+    if (!response.ok) throw new AiError(`DeepSeek chat failed (${response.status}): ${json?.error?.message || "unknown"}`, response.status === 429 ? "AI_RATE_LIMITED" : "AI_PROVIDER_ERROR");
+    const message = json?.choices?.[0]?.message || {};
+    const toolCalls = (message.tool_calls || []).map((c) => ({id: String(c.id || ""), name: String(c.function?.name || ""), arguments: String(c.function?.arguments || "{}")}));
+    const content = String(message.content || "").trim();
+    if (!content && !toolCalls.length) throw new AiError("DeepSeek returned an empty response", "AI_EMPTY_RESPONSE");
+    ok = true;
+    return {content, toolCalls, usage: {input: Number(json?.usage?.prompt_tokens || 0), cached: Number(json?.usage?.prompt_cache_hit_tokens || 0), output: Number(json?.usage?.completion_tokens || 0)}};
+  } catch (error) {
+    if (error instanceof AiError) throw error;
+    const timeout = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+    throw new AiError(timeout ? "DeepSeek chat timed out" : `DeepSeek chat failed: ${error instanceof Error ? error.message : String(error)}`, timeout ? "AI_TIMEOUT" : "AI_PROVIDER_ERROR");
+  } finally {
+    await cfg.onCall?.("deepseek:chat", ok, Date.now() - started);
+  }
+}
