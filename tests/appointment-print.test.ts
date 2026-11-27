@@ -18,3 +18,14 @@ test('appointment slip is compact, dark and suppresses browser header space',()=
  assert.match(html,/color:#000/);
  assert.doesNotMatch(html,/railway|https?:\/\//i);
 });
+
+test('a discounted bill prints price, discount and the amount payable, not the undiscounted price alone',()=>{
+ const row={patient_name:'Fida Hussain',service:'Skin Consultation',price:2000,appointment_date:'2026-11-27',appointment_time:'18:00'};
+ const entries=Object.fromEntries(appointmentPrintEntries(row,{discount:500,total:2000,net:1500}));
+ assert.equal(entries['Price'],'PKR 2,000');assert.equal(entries['Discount'],'PKR 500');assert.equal(entries['Total Payable'],'PKR 1,500');
+ const html=appointmentPrintHtml(row,'27 Nov 2026',{discount:500,total:2000,net:1500});
+ assert.match(html,/Total Payable[\s\S]*PKR 1,500/);
+ // no discount (or no invoice) keeps the original slip
+ assert.deepEqual(Object.keys(Object.fromEntries(appointmentPrintEntries(row,{discount:0,total:2000,net:2000}))).includes('Discount'),false);
+ assert.deepEqual(appointmentPrintEntries(row),appointmentPrintEntries(row,null));
+});
